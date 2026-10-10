@@ -7,6 +7,32 @@ import 'hongguo_metadata.dart';
 final class HongguoParser {
   const HongguoParser();
 
+  /// 解析 category_schema 里的题材标签（都市 / 现代 / 玄幻…）。
+  ///
+  /// 该字段是 JSON 字符串，元素形如
+  /// `{"category_id":5022,"name":"都市","schema":"dragon8662://..."}`。
+  /// 短剧列表接口不返回 data['tags']，题材只能从这里取。
+  List<String>? _categorySchemaTags(Map<String, dynamic> data) {
+    final raw = data['category_schema'];
+    Object? decoded;
+    try {
+      decoded = switch (raw) {
+        String value when value.trim().isNotEmpty => jsonDecode(value),
+        List value => value,
+        _ => null,
+      };
+    } on FormatException {
+      return null;
+    }
+    if (decoded is! List) return null;
+    final names = <String>[];
+    for (final item in decoded) {
+      final name = field(objectMap(item), ['name']).trim();
+      if (name.isNotEmpty && !names.contains(name)) names.add(name);
+    }
+    return names.isEmpty ? null : names;
+  }
+
   /// Decode just the assigned JSON object, not the surrounding JavaScript.
   /// Braces in quoted strings and trailing script blocks are supported.
   Map<String, dynamic> routerData(String html) {
@@ -85,7 +111,8 @@ final class HongguoParser {
       'keyword',
     ], fallback?.sourceId ?? '');
     if (sourceId.isEmpty) return null;
-    final tags = stringList(data['tags']);
+    // 题材标签来自 category_schema（data['tags'] 通常为空）。
+    final tags = _categorySchemaTags(data) ?? stringList(data['tags']);
     final remark = field(data, ['episode_right_text'], fallback?.remark ?? '');
     final count =
         int.tryParse(field(data, ['episode_cnt'])) ??

@@ -303,6 +303,9 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                                   // 卡片高度不再随标题行数或封面比例浮动。
                                   aspectRatio: _coverAspectRatio,
                                   fixedTitleHeight: _titleHeight,
+                                  // 副标题显示题材标签（都市 / 现代…），
+                                  // 取代默认的「集数 · 分类」。
+                                  subtitle: _cardSubtitle(drama),
                                   onTap: () => widget.onPlay(drama),
                                   onLongPress: () => showDramaDetail(
                                     context,
@@ -441,6 +444,13 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
   /// 已不含排序指标 footer —— 那行在默认排序下只是空格占位，
   /// 会让每张卡片底部多出一片空白。
   static const double _cardTextHeight = 8 + 9 + _titleHeight + 4 + 14 + 6;
+
+  /// 卡片副标题：优先显示题材标签（最多两个），没有标签时退回分类。
+  /// 不再显示集数 —— 挑剧时题材比集数有用，位置让给标签。
+  String _cardSubtitle(Drama drama) {
+    if (drama.tags.isNotEmpty) return drama.tags.take(2).join(' · ');
+    return drama.category.isEmpty ? drama.channel.label : drama.category;
+  }
 
   /// 按列数与可用宽度反推「整卡宽高比」，让 SliverGrid 的格子
   /// 刚好容纳封面 + 文字区：同一行卡片高度完全一致，也不会溢出。

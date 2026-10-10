@@ -114,6 +114,7 @@ class DramaCard extends StatelessWidget {
     this.selected = false,
     this.selecting = false,
     this.footer,
+    this.subtitle,
     this.interactive = true,
   });
   final Drama drama;
@@ -124,6 +125,9 @@ class DramaCard extends StatelessWidget {
   /// 标题区固定高度：TV 网格为对齐卡片高度而传入。
   /// 为 null 时标题区按内容自适应（保持原有行为）。
   final double? fixedTitleHeight;
+  /// 卡片副标题（覆盖 [Drama.subtitle]）：TV 网格用它显示题材标签，
+  /// 取代默认的「集数 · 分类」。
+  final String? subtitle;
   final bool selected;
   final bool selecting;
   final Widget? footer;
@@ -155,7 +159,7 @@ class DramaCard extends StatelessWidget {
                   _titleBlock(context, drama.title),
                   const SizedBox(height: 4),
                   Text(
-                    drama.subtitle,
+                    subtitle ?? drama.subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 11, color: context.muted),
