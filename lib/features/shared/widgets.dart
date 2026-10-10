@@ -332,36 +332,43 @@ class _MarqueeTitleState extends State<_MarqueeTitle>
         );
       }
       final distance = textWidth + _gap;
-      return ClipRect(
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
-            final dx = -distance * _controller.value;
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Transform.translate(
-                  offset: Offset(dx, 0),
-                  child: Text(
-                    widget.text,
-                    maxLines: 1,
-                    softWrap: false,
-                    style: widget.style,
+      // 固定成「容器宽 × 单行高」再裁剪：否则 Stack 会被文字撑宽，
+      // ClipRect 按那个宽度裁，跟在后面的第二份文字就永远露不出来，
+      // 滚动时右侧一直空着一块、看起来像文字被截断。
+      return SizedBox(
+        width: constraints.maxWidth,
+        height: painter.height,
+        child: ClipRect(
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              final dx = -distance * _controller.value;
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Transform.translate(
+                    offset: Offset(dx, 0),
+                    child: Text(
+                      widget.text,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: widget.style,
+                    ),
                   ),
-                ),
-                // 第二份紧跟在后面，形成无缝循环
-                Transform.translate(
-                  offset: Offset(dx + distance, 0),
-                  child: Text(
-                    widget.text,
-                    maxLines: 1,
-                    softWrap: false,
-                    style: widget.style,
+                  // 第二份紧跟在后面，形成无缝循环
+                  Transform.translate(
+                    offset: Offset(dx + distance, 0),
+                    child: Text(
+                      widget.text,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: widget.style,
+                    ),
                   ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       );
     },
