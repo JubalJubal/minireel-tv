@@ -29,9 +29,11 @@ class TVAppShell extends StatefulWidget {
   State<TVAppShell> createState() => _TVAppShellState();
 }
 
+/// 导航栏宽度：推挤布局下内容区被推开的距离，也是导航栏自身的宽度。
+/// 160 是压掉右侧多余空白后的取值（原来 200 时导航项右侧空得太多）。
+const double _tvNavWidth = 160;
+
 class _TVAppShellState extends State<TVAppShell> {
-  /// 导航抽屉宽度，与 [_TVNavigation] 的固定宽度保持一致。
-  static const double _navWidth = 200;
   /// 当前聚焦的导航项下标。焦点即选中：焦点一落到菜单项就切换内容。
   int _navIndex = 0;
   bool _openingPlayer = false;
@@ -160,7 +162,7 @@ class _TVAppShellState extends State<TVAppShell> {
     }
     if (event.buttons == kPrimaryMouseButton &&
         _navVisible &&
-        event.position.dx > _navWidth) {
+        event.position.dx > _tvNavWidth) {
       _hideNav();
     }
   }
@@ -306,12 +308,12 @@ class _TVAppShellState extends State<TVAppShell> {
                           key: const ValueKey('tv-nav-drawer'),
                           duration: const Duration(milliseconds: 240),
                           curve: Curves.easeOutCubic,
-                          width: _navVisible ? _navWidth : 0,
+                          width: _navVisible ? _tvNavWidth : 0,
                           child: ClipRect(
                             child: OverflowBox(
                               alignment: Alignment.centerLeft,
-                              minWidth: _navWidth,
-                              maxWidth: _navWidth,
+                              minWidth: _tvNavWidth,
+                              maxWidth: _tvNavWidth,
                               child: ExcludeFocus(
                                 excluding: !_navVisible,
                                 child: FocusTraversalGroup(
@@ -475,17 +477,11 @@ class _TVNavigation extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = _TVNavItem.all;
     return Container(
-      width: 200,
+      width: _tvNavWidth,
       decoration: BoxDecoration(
         color: context.colors.surface,
-        // 抽屉覆盖在内容之上，用右侧阴影拉开层次
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .38),
-            blurRadius: 28,
-            offset: const Offset(8, 0),
-          ),
-        ],
+        // 推挤布局下导航栏与内容区已有明确分界，不再需要右侧阴影
+        // （之前会被看成一条多余的竖线）。
       ),
       // 8 个导航项在浅屏（横屏约 384dp 高）会超出可视高度：用可滚动的
       // Column 承载，既不溢出，也不会像 ListView 那样把视口外的项懒加载掉

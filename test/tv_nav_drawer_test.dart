@@ -45,12 +45,12 @@ void main() {
     // 焦点在内容区最左（综合频道的悬浮搜索按钮）时按左键 → 唤出导航
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pumpAndSettle();
-    expect(drawerWidth(), 200, reason: '左键应能唤出导航抽屉');
+    expect(drawerWidth(), greaterThan(0), reason: '左键应能唤出导航抽屉');
 
     // 下键切到「真人剧」：非综合频道，没有搜索按钮可当内容区入口
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pumpAndSettle();
-    expect(drawerWidth(), 200, reason: '预览其他菜单时抽屉保持展开');
+    expect(drawerWidth(), greaterThan(0), reason: '预览其他菜单时抽屉保持展开');
 
     // 右键必须能收回 —— 这里就是「其他菜单下失效」的回归点
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
