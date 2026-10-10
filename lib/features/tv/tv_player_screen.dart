@@ -296,164 +296,6 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     _showControls();
   }
 
-  Future<void> _openMenu() async {
-    if (_sheetOpen) return;
-    _session.hold('sheet');
-    setState(() => _sheetOpen = true);
-    _sessionChanged();
-    try {
-      await showReelSheet<void>(
-        context,
-        dark: true,
-        builder: (context) => ListenableBuilder(
-          listenable: _app,
-          builder: (context, _) => _menuContent(context),
-        ),
-      );
-    } finally {
-      if (mounted && !_closing) {
-        setState(() => _sheetOpen = false);
-        _session.release('sheet');
-        _showControls();
-      }
-    }
-  }
-
-  Widget _menuContent(BuildContext context) => SheetFrame(
-    title: _session.drama.title,
-    subtitle:
-        '第 ${_session.episode?.index ?? 1} 集 · 共 ${_session.episodes.length} 集',
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            _menuAction(context, Icons.grid_view_rounded, '选集', () {
-              Navigator.of(context).pop();
-              _openEpisodes();
-            }, autofocus: true),
-            _menuAction(
-              context,
-              _app.isFavorite(_session.drama.id)
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
-              _app.isFavorite(_session.drama.id) ? '已收藏' : '收藏',
-              () => _app.toggleFavorite(_session.drama),
-              active: _app.isFavorite(_session.drama.id),
-            ),
-            _menuAction(
-              context,
-              Icons.speed_rounded,
-              '${_app.preferences.speed}x',
-              () {
-                Navigator.of(context).pop();
-                _openSpeed();
-              },
-            ),
-            _menuAction(
-              context,
-              Icons.high_quality_outlined,
-              _session.currentQuality,
-              () {
-                Navigator.of(context).pop();
-                _openQuality();
-              },
-            ),
-            _menuAction(
-              context,
-              Icons.aspect_ratio_rounded,
-              _fitLabel(_app.preferences.videoFitMode),
-              () {
-                Navigator.of(context).pop();
-                _openFitMode();
-              },
-            ),
-            _menuAction(
-              context,
-              Icons.volume_up_rounded,
-              _audioBoostLabel(_app.preferences.audioBoost),
-              () {
-                Navigator.of(context).pop();
-                _openAudioBoost();
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        if (_session.drama.intro.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              _session.drama.intro,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white54,
-                fontSize: 12,
-                height: 1.7,
-              ),
-            ),
-          ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _exit();
-            },
-            icon: const Icon(Icons.logout_rounded, size: 19),
-            label: const Text('退出播放'),
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _menuAction(
-    BuildContext context,
-    IconData icon,
-    String label,
-    VoidCallback onTap, {
-    bool active = false,
-    bool autofocus = false,
-  }) => Expanded(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: TVFocusable(
-        radius: 14,
-        onTap: onTap,
-        autofocus: autofocus,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: active
-                ? context.colors.primary.withValues(alpha: .12)
-                : Colors.white.withValues(alpha: .05),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Column(
-            children: [
-              Icon(
-                icon,
-                size: 24,
-                color: active ? context.colors.primary : Colors.white70,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: active ? context.colors.primary : Colors.white70,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-
   Future<void> _openEpisodes() async {
     _session.hold('sheet');
     setState(() => _sheetOpen = true);
@@ -818,9 +660,10 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
       }
       return KeyEventResult.handled;
     }
-    // MENU（三条横岗等）→ 打开菜单
+    // MENU（三条横岗等）→ 显示控制栏。功能按钮已全部平铺在界面上，
+    // 不再有二级菜单。
     if (keyMap.matches(RemoteAction.menu, key)) {
-      unawaited(_openMenu());
+      _showControls();
       return KeyEventResult.handled;
     }
     // OK/ENTER/SPACE → 播放/暂停（同时确保控件可见）
@@ -1199,6 +1042,49 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // 播放控制行（对齐参考播放器的按钮排列）
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _ctrlButton(
+                  Icons.skip_previous_rounded,
+                  '上一集',
+                  _session.canPrevious ? () => _changeEpisode(false) : null,
+                ),
+                const SizedBox(width: 20),
+                _ctrlButton(
+                  Icons.replay_rounded,
+                  '快退 ${_app.preferences.seekStepSeconds}s',
+                  () => _seekBy(
+                    Duration(seconds: -_app.preferences.seekStepSeconds),
+                  ),
+                ),
+                const SizedBox(width: 20),
+                _ctrlButton(
+                  _session.playing
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded,
+                  _session.playing ? '暂停' : '播放',
+                  _togglePlay,
+                  big: true,
+                ),
+                const SizedBox(width: 20),
+                _ctrlButton(
+                  Icons.forward_rounded,
+                  '快进 ${_app.preferences.seekStepSeconds}s',
+                  () => _seekBy(
+                    Duration(seconds: _app.preferences.seekStepSeconds),
+                  ),
+                ),
+                const SizedBox(width: 20),
+                _ctrlButton(
+                  Icons.skip_next_rounded,
+                  '下一集',
+                  _session.canNext ? () => _changeEpisode(true) : null,
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
             // 进度条
             Row(
               children: [
@@ -1233,49 +1119,51 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            // 控件按钮行（纯展示 + 鼠标可点击，不参与 D-pad 焦点）
+            const SizedBox(height: 20),
+            // 功能按钮行：原来收在「菜单」二级面板里的项全部平铺出来，
+            // 不再有中间那一层入口。
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 _ctrlButton(
-                  Icons.skip_previous_rounded,
-                  '上一集',
-                  _session.canPrevious ? () => _changeEpisode(false) : null,
+                  Icons.grid_view_rounded,
+                  '选集',
+                  () => unawaited(_openEpisodes()),
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 16),
                 _ctrlButton(
-                  Icons.replay_rounded,
-                  '快退 ${_app.preferences.seekStepSeconds}s',
-                  () => _seekBy(Duration(seconds: -_app.preferences.seekStepSeconds)),
+                  _app.isFavorite(_session.drama.id)
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  _app.isFavorite(_session.drama.id) ? '已收藏' : '收藏',
+                  () => _app.toggleFavorite(_session.drama),
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 16),
                 _ctrlButton(
-                  _session.playing
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
-                  _session.playing ? '暂停' : '播放',
-                  _togglePlay,
-                  big: true,
+                  Icons.speed_rounded,
+                  '${_app.preferences.speed}x',
+                  () => unawaited(_openSpeed()),
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 16),
                 _ctrlButton(
-                  Icons.forward_rounded,
-                  '快进 ${_app.preferences.seekStepSeconds}s',
-                  () => _seekBy(Duration(seconds: _app.preferences.seekStepSeconds)),
+                  Icons.high_quality_outlined,
+                  _session.currentQuality,
+                  () => unawaited(_openQuality()),
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 16),
                 _ctrlButton(
-                  Icons.skip_next_rounded,
-                  '下一集',
-                  _session.canNext ? () => _changeEpisode(true) : null,
+                  Icons.aspect_ratio_rounded,
+                  _fitLabel(_app.preferences.videoFitMode),
+                  () => unawaited(_openFitMode()),
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 16),
                 _ctrlButton(
-                  Icons.menu_rounded,
-                  '菜单',
-                  _openMenu,
+                  Icons.volume_up_rounded,
+                  _audioBoostLabel(_app.preferences.audioBoost),
+                  () => unawaited(_openAudioBoost()),
                 ),
+                const SizedBox(width: 16),
+                _ctrlButton(Icons.logout_rounded, '退出', _exit),
               ],
             ),
           ],
