@@ -68,31 +68,7 @@ final class HongguoRankingService {
       throw failure;
     }
     var content = objectMap(loader['content']);
-    if (content.isEmpty) {
-      for (final tag in RegExp(
-        r'<script\b[^>]*>',
-        caseSensitive: false,
-        dotAll: true,
-      ).allMatches(html)) {
-        final attrs = _attributes(tag[0]!);
-        if (attrs['data-fn-name'] != 'r' ||
-            attrs['data-script-src'] != 'modern-run-router-data-fn') {
-          continue;
-        }
-        try {
-          final args = jsonDecode(attrs['data-fn-args'] ?? 'null');
-          if (args is List &&
-              args.length == 3 &&
-              args[0] == route &&
-              args[1] == 'content') {
-            content = objectMap(args[2]);
-            break;
-          }
-        } on FormatException {
-          continue;
-        }
-      }
-    }
+    if (content.isEmpty) content = _contentFromScripts(html, route);
     final pagination = objectMap(content['pagination']);
     final totalPages = int.tryParse(field(pagination, ['totalPages'])) ?? 0;
     final rows = content['rankList'];
@@ -160,6 +136,65 @@ final class HongguoRankingService {
       totalPages: totalPages,
       updatedText: field(loader, ['updatedText']),
     );
+  }
+
+  /// 榜单内容不在 loaderData 里（那里是 `content: {}`），而是由页面脚本注入：
+  ///
+  /// ```html
+  /// <script data-script-src="modern-run-window-fn"
+  ///         data-fn-name="mergeLoaderData"
+  ///         data-fn-args='["rank_hot-drama/page",[{"key":"content",
+  ///           "routerDataFnName":"p","routerDataFnArgs":["{...}"]}]]'>
+  /// ```
+  ///
+  /// 更早的版本用的是 `data-fn-name="r"` +
+  /// `data-script-src="modern-run-router-data-fn"` 的三参数形式，两种都认。
+  Map<String, dynamic> _contentFromScripts(String html, String route) {
+    for (final tag in RegExp(
+      r'<script\b[^>]*>',
+      caseSensitive: false,
+      dotAll: true,
+    ).allMatches(html)) {
+      final attrs = _attributes(tag[0]!);
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(attrs['data-fn-args'] ?? 'null');
+      } on FormatException {
+        continue;
+      }
+      if (decoded is! List || decoded.isEmpty || decoded[0] != route) {
+        continue;
+      }
+
+      // 新格式：mergeLoaderData(route, [{key: 'content', routerDataFnArgs: [...]}])
+      if (attrs['data-fn-name'] == 'mergeLoaderData' && decoded.length == 2) {
+        final entries = decoded[1];
+        if (entries is! List) continue;
+        for (final entry in entries) {
+          final map = objectMap(entry);
+          if (field(map, ['key']) != 'content') continue;
+          for (final value in anyList(map['routerDataFnArgs'])) {
+            if (value is! String || !value.trimLeft().startsWith('{')) {
+              continue;
+            }
+            try {
+              final parsed = objectMap(jsonDecode(value));
+              if (parsed.isNotEmpty) return parsed;
+            } on FormatException {
+              continue;
+            }
+          }
+        }
+        continue;
+      }
+
+      // 旧格式：r(route, 'content', {...})
+      if (decoded.length == 3 && decoded[1] == 'content') {
+        final parsed = objectMap(decoded[2]);
+        if (parsed.isNotEmpty) return parsed;
+      }
+    }
+    return const {};
   }
 
   Map<String, String> _attributes(String tag) {
