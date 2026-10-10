@@ -1027,150 +1027,158 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     );
   }
 
-  Widget _bottomControls(double fraction) => Container(
-    decoration: const BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.bottomCenter,
-        end: Alignment.topCenter,
-        colors: [Color(0xCC000000), Colors.transparent],
-      ),
-    ),
-    child: SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(32, 40, 32, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 播放控制行（对齐参考播放器的按钮排列）
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _ctrlButton(
-                  Icons.skip_previous_rounded,
-                  '上一集',
-                  _session.canPrevious ? () => _changeEpisode(false) : null,
-                ),
-                const SizedBox(width: 14),
-                _ctrlButton(
-                  Icons.replay_rounded,
-                  '快退 ${_app.preferences.seekStepSeconds}s',
-                  () => _seekBy(
-                    Duration(seconds: -_app.preferences.seekStepSeconds),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                _ctrlButton(
-                  _session.playing
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
-                  _session.playing ? '暂停' : '播放',
-                  _togglePlay,
-                  big: true,
-                ),
-                const SizedBox(width: 14),
-                _ctrlButton(
-                  Icons.forward_rounded,
-                  '快进 ${_app.preferences.seekStepSeconds}s',
-                  () => _seekBy(
-                    Duration(seconds: _app.preferences.seekStepSeconds),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                _ctrlButton(
-                  Icons.skip_next_rounded,
-                  '下一集',
-                  _session.canNext ? () => _changeEpisode(true) : null,
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            // 进度条
-            Row(
-              children: [
-                Text(
-                  formatTime(_seekPreview ?? _session.position),
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: LinearProgressIndicator(
-                      value: fraction,
-                      minHeight: 5,
-                      backgroundColor: Colors.white24,
-                      valueColor: AlwaysStoppedAnimation(
-                        context.colors.primary,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  formatTime(_session.duration),
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            // 功能按钮行：原来收在「菜单」二级面板里的项全部平铺出来，
-            // 不再有中间那一层入口。
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _ctrlButton(
-                  Icons.grid_view_rounded,
-                  '选集',
-                  () => unawaited(_openEpisodes()),
-                ),
-                const SizedBox(width: 10),
-                _ctrlButton(
-                  _app.isFavorite(_session.drama.id)
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                  _app.isFavorite(_session.drama.id) ? '已收藏' : '收藏',
-                  () => _app.toggleFavorite(_session.drama),
-                ),
-                const SizedBox(width: 10),
-                _ctrlButton(
-                  Icons.speed_rounded,
-                  '${_app.preferences.speed}x',
-                  () => unawaited(_openSpeed()),
-                ),
-                const SizedBox(width: 10),
-                _ctrlButton(
-                  Icons.high_quality_outlined,
-                  _session.currentQuality,
-                  () => unawaited(_openQuality()),
-                ),
-                const SizedBox(width: 10),
-                _ctrlButton(
-                  Icons.aspect_ratio_rounded,
-                  _fitLabel(_app.preferences.videoFitMode),
-                  () => unawaited(_openFitMode()),
-                ),
-                const SizedBox(width: 10),
-                _ctrlButton(
-                  Icons.volume_up_rounded,
-                  _audioBoostLabel(_app.preferences.audioBoost),
-                  () => unawaited(_openAudioBoost()),
-                ),
-                const SizedBox(width: 10),
-                _ctrlButton(Icons.logout_rounded, '退出', _exit),
-              ],
-            ),
-          ],
+  Widget _bottomControls(double fraction) {
+    final position = _seekPreview ?? _session.position;
+    final remaining = _session.duration - position;
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [Color(0xCC000000), Colors.transparent],
         ),
       ),
-    ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(32, 28, 32, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 播放控制行：左对齐，右端显示当前时间
+              Row(
+                children: [
+                  _ctrlButton(
+                    Icons.skip_previous_rounded,
+                    '上一集',
+                    _session.canPrevious ? () => _changeEpisode(false) : null,
+                  ),
+                  const SizedBox(width: 14),
+                  _ctrlButton(
+                    Icons.replay_rounded,
+                    '快退 ${_app.preferences.seekStepSeconds}s',
+                    () => _seekBy(
+                      Duration(seconds: -_app.preferences.seekStepSeconds),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  _ctrlButton(
+                    _session.playing
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                    _session.playing ? '暂停' : '播放',
+                    _togglePlay,
+                    big: true,
+                  ),
+                  const SizedBox(width: 14),
+                  _ctrlButton(
+                    Icons.forward_rounded,
+                    '快进 ${_app.preferences.seekStepSeconds}s',
+                    () => _seekBy(
+                      Duration(seconds: _app.preferences.seekStepSeconds),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  _ctrlButton(
+                    Icons.skip_next_rounded,
+                    '下一集',
+                    _session.canNext ? () => _changeEpisode(true) : null,
+                  ),
+                  const Spacer(),
+                  _timeLabel(_clockLabel),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // 进度条整行通铺，两端不再各放一个时间（时间统一收到右下）
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  value: fraction,
+                  minHeight: 5,
+                  backgroundColor: Colors.white24,
+                  valueColor: AlwaysStoppedAnimation(context.colors.primary),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // 功能按钮行：左对齐，右端显示剩余 / 当前 / 总时长
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _ctrlButton(
+                    Icons.grid_view_rounded,
+                    '选集',
+                    () => unawaited(_openEpisodes()),
+                  ),
+                  const SizedBox(width: 10),
+                  _ctrlButton(
+                    _app.isFavorite(_session.drama.id)
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    _app.isFavorite(_session.drama.id) ? '已收藏' : '收藏',
+                    () => _app.toggleFavorite(_session.drama),
+                  ),
+                  const SizedBox(width: 10),
+                  _ctrlButton(
+                    Icons.speed_rounded,
+                    '${_app.preferences.speed}x',
+                    () => unawaited(_openSpeed()),
+                  ),
+                  const SizedBox(width: 10),
+                  _ctrlButton(
+                    Icons.high_quality_outlined,
+                    _session.currentQuality,
+                    () => unawaited(_openQuality()),
+                  ),
+                  const SizedBox(width: 10),
+                  _ctrlButton(
+                    Icons.aspect_ratio_rounded,
+                    _fitLabel(_app.preferences.videoFitMode),
+                    () => unawaited(_openFitMode()),
+                  ),
+                  const SizedBox(width: 10),
+                  _ctrlButton(
+                    Icons.volume_up_rounded,
+                    _audioBoostLabel(_app.preferences.audioBoost),
+                    () => unawaited(_openAudioBoost()),
+                  ),
+                  const SizedBox(width: 10),
+                  _ctrlButton(Icons.logout_rounded, '退出', _exit),
+                  const Spacer(),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _timeLabel('剩余 ${formatTime(remaining)}'),
+                      const SizedBox(height: 2),
+                      _timeLabel(
+                        '${formatTime(position)} / ${formatTime(_session.duration)}',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 控制栏右端的次要信息文字（当前时间 / 剩余时长 / 进度）。
+  Widget _timeLabel(String text) => Text(
+    text,
+    style: const TextStyle(color: Colors.white60, fontSize: 12.5),
   );
+
+  /// 「周六 10 10月 23:03」：播放页右下角的当前时间。
+  String get _clockLabel {
+    final now = DateTime.now();
+    const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    return '${weekdays[now.weekday - 1]} ${now.day} ${now.month}月 $hour:$minute';
+  }
+
 
   Widget _ctrlButton(
     IconData icon,
