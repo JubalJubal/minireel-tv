@@ -132,7 +132,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
-          TAG_NAME="v${VERSION}-tv-build-${{ github.run_number }}"
+          # 用 pubspec 的 build 号，而不是 run_number：app 的更新检测就是拿
+          # 这个号和 PackageInfo.buildNumber 比较，用流水号会永远检测不到更新。
+          BUILD=$(grep '^version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 2)
+          TAG_NAME="v${VERSION}-tv-build-${BUILD}"
           gh release create "$TAG_NAME" output/*.apk \
             --title "MiniReel v${VERSION} Android TV (含 v7a)" \
             --notes "MiniReel Android TV 在线编译版本 (v${VERSION})"
