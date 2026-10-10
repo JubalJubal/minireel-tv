@@ -112,6 +112,13 @@ final class TVFocusRegistry {
 /// tab 可见，在「我的/设置」tab 会落到 IndexedStack 隐藏的不可见节点。
 FocusNode? contentEntryFocusNode;
 
+/// 由 [TVAppShell] 注册：内容区焦点已无法继续左移时，请求唤出导航抽屉。
+///
+/// 放在 [TVDpadInterceptor] 里触发而不是直接监听左键，是为了让「左键唤出
+/// 导航」只在真正到边时生效：内容区内部仍有可左移的焦点时，方向键先被
+/// [TVFocusTraversalPolicy] 消费，不会误唤出抽屉。
+VoidCallback? onNavRevealRequested;
+
 /// TV 版焦点高亮系统。
 ///
 /// 设计约束：绝对继承现有设计语言（ReelTheme）。
@@ -739,9 +746,17 @@ class TVFocusTraversalPolicy extends FocusTraversalPolicy {
   }
 
   bool _isInNavRegion(FocusNode node) {
-    // 导航栏在屏幕左侧 x∈[0,200]，节点 x 在此范围内视为导航栏内
+    // 用导航栏实际占据的矩形判断，而不是硬编码 x∈[0,200]。
+    // 导航抽屉收起时会滑到屏幕左侧之外，硬编码会把内容区第一列误判为
+    // 导航栏（从卡片按右键会被错误地拉回搜索框）。
+    final navContext = navRegionKey.currentContext;
+    if (navContext == null) return false;
+    final navObject = navContext.findRenderObject();
+    if (navObject is! RenderBox || !navObject.hasSize) return false;
+    final navRect = navObject.localToGlobal(Offset.zero) & navObject.size;
     final nodeRect = node.rect;
-    return nodeRect.left < 200 && nodeRect.right <= 200;
+    return nodeRect.left >= navRect.left - 1 &&
+        nodeRect.right <= navRect.right + 1;
   }
 
   /// 向上查找最近的 FocusTraversalGroup 对应的 FocusNode。
@@ -799,6 +814,12 @@ class TVDpadInterceptor extends StatelessWidget {
     final policy = FocusTraversalGroup.of(current.context!);
     if (policy is TVFocusTraversalPolicy) {
       if (policy.inDirection(current, direction)) {
+        return KeyEventResult.handled;
+      }
+      // 内容区已到最左、无法继续左移时，改而唤出导航抽屉。
+      if (direction == TraversalDirection.left &&
+          onNavRevealRequested != null) {
+        onNavRevealRequested!();
         return KeyEventResult.handled;
       }
     } else {

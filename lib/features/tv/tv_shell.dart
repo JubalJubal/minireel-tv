@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -29,8 +30,12 @@ class TVAppShell extends StatefulWidget {
 }
 
 class _TVAppShellState extends State<TVAppShell> {
+  /// 导航抽屉宽度，与 [_TVNavigation] 的固定宽度保持一致。
+  static const double _navWidth = 200;
   int _tab = 0;
   bool _openingPlayer = false;
+  /// 导航抽屉是否滑出。默认 false：完全移出屏幕左侧，不留图标、不占画幅。
+  bool _navVisible = false;
   /// 顶部搜索框的焦点节点：由 shell 统一持有，用于
   /// 1) 初始焦点落在搜索框（而非导航栏）
   /// 2) 从导航栏按→进入内容区时统一落到搜索框
@@ -69,6 +74,10 @@ class _TVAppShellState extends State<TVAppShell> {
     searchFocusNode = _searchFocus;
     // 初始内容区入口：短剧库的搜索框
     contentEntryFocusNode = _searchFocus;
+    // 内容区到最左仍无法左移时，由 D-pad 拦截器回调唤出导航抽屉
+    onNavRevealRequested = _showNav;
+    // 焦点离开导航项（例如在抽屉里按右键回到内容区）时自动收回抽屉
+    FocusManager.instance.addListener(_onPrimaryFocusChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       // 默认焦点：进入后红点在顶部搜索框
@@ -99,11 +108,51 @@ class _TVAppShellState extends State<TVAppShell> {
 
   @override
   void dispose() {
+    FocusManager.instance.removeListener(_onPrimaryFocusChanged);
+    onNavRevealRequested = null;
     searchFocusNode = null;
     contentEntryFocusNode = null;
     _searchFocus.dispose();
     _contentScope.dispose();
     super.dispose();
+  }
+
+  /// 唤出导航抽屉，并把焦点落到当前选中的导航项（遥控器可直接上下切换）。
+  void _showNav() {
+    if (_navVisible || !mounted) return;
+    setState(() => _navVisible = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_navVisible) return;
+      TVFocusRegistry.get('navItem$_tab')?.requestFocus();
+    });
+  }
+
+  /// 收回导航抽屉，焦点回到当前 tab 的内容区入口。
+  void _hideNav() {
+    if (!_navVisible || !mounted) return;
+    setState(() => _navVisible = false);
+    _applyContentEntry(_tab);
+  }
+
+  /// 焦点一离开导航项就收回抽屉，覆盖「在抽屉里按右键」与「选中后进内容区」。
+  void _onPrimaryFocusChanged() {
+    if (!_navVisible) return;
+    final focus = FocusManager.instance.primaryFocus;
+    if (focus == null) return;
+    if (TVFocusRegistry.roleOf(focus)?.startsWith('navItem') ?? false) return;
+    _hideNav();
+  }
+
+  /// 鼠标交互：右键唤出导航，左键点击导航之外的区域收回。
+  void _handlePointerDown(PointerDownEvent event) {    if (event.buttons == kSecondaryMouseButton) {
+      _showNav();
+      return;
+    }
+    if (event.buttons == kPrimaryMouseButton &&
+        _navVisible &&
+        event.position.dx > _navWidth) {
+      _hideNav();
+    }
   }
 
   /// 切换 tab 并把焦点移到内容区。
@@ -190,53 +239,65 @@ class _TVAppShellState extends State<TVAppShell> {
       },
       child: TVDpadInterceptor(
         child: Scaffold(
-        body: Container(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          child: Row(
-            children: [
-              // 导航栏独立焦点区：D-pad 在导航项间上下移动，右键进入内容区
-              // 右键统一落到顶部搜索框（由 TVFocusTraversalPolicy 特判处理）
-              FocusTraversalGroup(
-                key: navRegionKey,
-                policy: TVFocusTraversalPolicy(),
-                child: _TVNavigation(
-                  selected: _tab,
-                  onSelect: _selectTab,
-                ),
-              ),
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border(
-                      left: BorderSide(color: Theme.of(context).dividerColor),
-                    ),
-                  ),
-                  // 内容区独立焦点区（二维，允许上下左右）
-                  child: Focus(
-                    focusNode: _contentScope,
-                    canRequestFocus: false,
-                    descendantsAreFocusable: true,
-                    child: FocusTraversalGroup(
-                      policy: TVFocusTraversalPolicy(),
-                      child: IndexedStack(
-                        index: _tab,
-                        children: [
-                          TVLibraryScreen(onPlay: _play, searchFocus: _searchFocus),
-                          TVRankingsScreen(onPlay: _play),
-                          TVMineScreen(
-                            onPlay: _play,
-                            onExplore: () => _selectTab(0),
-                          ),
-                          TVSettingsScreen(),
-                        ],
+          body: Container(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            child: Listener(
+              // 鼠标：右键唤出导航，左键点击导航外区域收回
+              onPointerDown: _handlePointerDown,
+              child: Stack(
+                children: [
+                  // 内容区占满整个画幅：导航栏改成覆盖式抽屉，不再挤占宽度
+                  Positioned.fill(
+                    child: Focus(
+                      focusNode: _contentScope,
+                      canRequestFocus: false,
+                      descendantsAreFocusable: true,
+                      child: FocusTraversalGroup(
+                        policy: TVFocusTraversalPolicy(),
+                        child: IndexedStack(
+                          index: _tab,
+                          children: [
+                            TVLibraryScreen(
+                              onPlay: _play,
+                              searchFocus: _searchFocus,
+                            ),
+                            TVRankingsScreen(onPlay: _play),
+                            TVMineScreen(
+                              onPlay: _play,
+                              onExplore: () => _selectTab(0),
+                            ),
+                            TVSettingsScreen(),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
+                  // 导航抽屉：默认完全移出屏幕左侧（不留图标、不占画幅），
+                  // 唤出时从左侧滑入并覆盖在内容之上。
+                  // ExcludeFocus 保证抽屉收起时其内部的焦点节点不会被 D-pad 选中。
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    left: _navVisible ? 0 : -_navWidth,
+                    top: 0,
+                    bottom: 0,
+                    width: _navWidth,
+                    child: ExcludeFocus(
+                      excluding: !_navVisible,
+                      child: FocusTraversalGroup(
+                        key: navRegionKey,
+                        policy: TVFocusTraversalPolicy(),
+                        child: _TVNavigation(
+                          selected: _tab,
+                          onSelect: _selectTab,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -257,6 +318,14 @@ class _TVNavigation extends StatelessWidget {
     width: 200,
     decoration: BoxDecoration(
       color: context.colors.surface,
+      // 抽屉覆盖在内容之上，用右侧阴影拉开层次
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: .38),
+          blurRadius: 28,
+          offset: const Offset(8, 0),
+        ),
+      ],
     ),
     child: Column(
       children: [
@@ -297,6 +366,8 @@ class _TVNavigation extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: TVFocusable(
         radius: 13,
+        // 角色供抽屉唤出时定位当前选中项（TVFocusRegistry.get）
+        focusRole: 'navItem$index',
         onTap: () => onSelect(index),
         // 默认焦点交给内容区顶部搜索框（TVLibraryScreen 内 autofocus: true），
         // 导航栏不抢初始焦点；D-pad 左键可从内容区进入导航栏。

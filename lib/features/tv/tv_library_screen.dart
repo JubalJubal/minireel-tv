@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/theme.dart';
@@ -348,50 +347,57 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                         SliverToBoxAdapter(child: _continueWatching(app)),
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                        sliver: SliverMasonryGrid.count(
-                          crossAxisCount: columns,
-                          mainAxisSpacing: 16,
-                          crossAxisSpacing: 16,
-                          childCount: items.length,
-                          itemBuilder: (context, index) {
-                            final drama = items[index];
-                            return TVFocusable(
-                              radius: 16,
-                              focusRole: index == 0 ? 'firstGridCard' : null,
-                              onTap: () => widget.onPlay(drama),
-                              onLongPress: () => showDramaDetail(
-                                context,
-                                drama,
-                                widget.onPlay,
+                        sliver: SliverGrid(
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: columns,
+                                mainAxisSpacing: 16,
+                                crossAxisSpacing: 16,
+                                childAspectRatio: _cardAspectRatio(
+                                  constraints.maxWidth,
+                                  columns,
+                                ),
                               ),
-                              child: DramaCard(
-                                drama: drama,
-                                favorite: app.isFavorite(drama.id),
-                                footer: sortMetric(drama, _order) == null
-                                    ? null
-                                    : Text(
-                                        sortMetric(drama, _order)!,
-                                        style: TextStyle(
-                                          color: context.muted,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                aspectRatio: [
-                                  0.66,
-                                  0.72,
-                                  0.70,
-                                  0.64,
-                                ][index % 4],
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final drama = items[index];
+                              return TVFocusable(
+                                radius: 16,
+                                focusRole: index == 0 ? 'firstGridCard' : null,
                                 onTap: () => widget.onPlay(drama),
                                 onLongPress: () => showDramaDetail(
                                   context,
                                   drama,
                                   widget.onPlay,
                                 ),
-                                interactive: false,
-                              ),
-                            );
-                          },
+                                child: DramaCard(
+                                  drama: drama,
+                                  favorite: app.isFavorite(drama.id),
+                                  // 统一保留文字区最后一行：没有排序指标时用空格占位，
+                                  // 避免「有指标 / 无指标」两种卡片高度不一致。
+                                  footer: Text(
+                                    sortMetric(drama, _order) ?? ' ',
+                                    style: TextStyle(
+                                      color: context.muted,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  // 统一封面比例，并固定标题区为两行高度，
+                                  // 卡片高度不再随标题行数或封面比例浮动。
+                                  aspectRatio: _coverAspectRatio,
+                                  fixedTitleHeight: _titleHeight,
+                                  onTap: () => widget.onPlay(drama),
+                                  onLongPress: () => showDramaDetail(
+                                    context,
+                                    drama,
+                                    widget.onPlay,
+                                  ),
+                                  interactive: false,
+                                ),
+                              );
+                            },
+                            childCount: items.length,
+                          ),
                         ),
                       ),
                       SliverToBoxAdapter(
@@ -535,6 +541,29 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
     );
   }
 
+  /// TV 卡片封面统一宽高比：所有卡片一致，封面高度不再参差。
+  static const double _coverAspectRatio = .68;
+
+  /// 标题区固定高度：13.5 号字 × 1.35 行高 × 2 行。
+  static const double _titleHeight = 13.5 * 1.35 * 2;
+
+  /// 卡片文字区总高：标题区上下内边距(8+9) + 标题两行 + 间距 4 +
+  /// 副标题一行 + footer 行的间距与行高，再留 8px 余量，
+  /// 避免字体度量差异（不同 Flutter 版本 / 系统字号）导致底部溢出。
+  static const double _cardTextHeight =
+      8 + 9 + _titleHeight + 4 + 14 + 7 + 13.5 + 8;
+
+  /// 按列数与可用宽度反推「整卡宽高比」，让 SliverGrid 的格子
+  /// 刚好容纳封面 + 文字区：同一行卡片高度完全一致，也不会溢出。
+  double _cardAspectRatio(double maxWidth, int columns) {
+    const horizontalPadding = 40.0; // SliverPadding 左右各 20
+    const spacing = 16.0;
+    final cardWidth =
+        (maxWidth - horizontalPadding - spacing * (columns - 1)) / columns;
+    final coverHeight = cardWidth / _coverAspectRatio;
+    return cardWidth / (coverHeight + _cardTextHeight);
+  }
+
   Widget _skeleton(double width) => GridView.builder(
     physics: const AlwaysScrollableScrollPhysics(),
     padding: const EdgeInsets.all(20),
@@ -543,7 +572,7 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
       crossAxisCount: dramaColumns(width),
       mainAxisSpacing: 16,
       crossAxisSpacing: 16,
-      childAspectRatio: .59,
+      childAspectRatio: _cardAspectRatio(width, dramaColumns(width)),
     ),
     itemBuilder: (_, _) => Container(
       decoration: BoxDecoration(

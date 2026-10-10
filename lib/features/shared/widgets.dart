@@ -109,6 +109,7 @@ class DramaCard extends StatelessWidget {
     this.onLongPress,
     this.favorite = false,
     this.aspectRatio = .68,
+    this.fixedTitleHeight,
     this.selected = false,
     this.selecting = false,
     this.footer,
@@ -119,6 +120,9 @@ class DramaCard extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool favorite;
   final double aspectRatio;
+  /// 标题区固定高度：TV 网格为对齐卡片高度而传入。
+  /// 为 null 时标题区按内容自适应（保持原有行为）。
+  final double? fixedTitleHeight;
   final bool selected;
   final bool selecting;
   final Widget? footer;
@@ -141,98 +145,13 @@ class DramaCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AspectRatio(
-              aspectRatio: aspectRatio,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CoverImage(drama: drama),
-                  const Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    height: 72,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Colors.transparent, Color(0x99000000)],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 7,
-                    bottom: 7,
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 142),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(6),
-                        color: drama.releaseStatus == ReleaseStatus.ongoing
-                            ? context.colors.primary
-                            : Colors.white.withValues(alpha: .23),
-                      ),
-                      child: Text(
-                        drama.episodeLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (favorite || selecting)
-                    Positioned(
-                      right: 7,
-                      top: 7,
-                      child: Container(
-                        width: 26,
-                        height: 26,
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? context.colors.primary
-                              : Colors.black38,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          selecting
-                              ? (selected
-                                    ? Icons.check_rounded
-                                    : Icons.circle_outlined)
-                              : Icons.favorite_rounded,
-                          color: selecting
-                              ? Colors.white
-                              : context.colors.primary,
-                          size: 14,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+            _cover(drama, context),
             Padding(
               padding: const EdgeInsets.fromLTRB(9, 8, 9, 9),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    drama.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13.5,
-                      height: 1.35,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  _titleBlock(drama.title),
                   const SizedBox(height: 4),
                   Text(
                     drama.subtitle,
@@ -249,6 +168,99 @@ class DramaCard extends StatelessWidget {
       ),
     ),
   );
+
+  /// 标题块。[fixedTitleHeight] 非空时固定高度，让 TV 网格里
+  /// 单行标题与双行标题占用同样的空间，卡片高度完全对齐。
+  Widget _titleBlock(String title) {
+    final text = Text(
+      title,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        fontSize: 13.5,
+        height: 1.35,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+    if (fixedTitleHeight == null) return text;
+    return SizedBox(
+      height: fixedTitleHeight,
+      child: Align(alignment: Alignment.topLeft, child: text),
+    );
+  }
+
+  /// 封面区。普通布局按 [aspectRatio] 固定比例；TV 网格
+  /// （[fixedTitleHeight] 非空）改用 Expanded 填满格子剩余高度，
+  /// 卡片高度完全由网格统一决定，内部不会出现空白。
+  Widget _cover(Drama drama, BuildContext context) {
+    final Widget cover = Stack(
+      fit: StackFit.expand,
+      children: [
+        CoverImage(drama: drama),
+        const Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 72,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Color(0x99000000)],
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 7,
+          bottom: 7,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 142),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6),
+              color: drama.releaseStatus == ReleaseStatus.ongoing
+                  ? context.colors.primary
+                  : Colors.white.withValues(alpha: .23),
+            ),
+            child: Text(
+              drama.episodeLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+        if (favorite || selecting)
+          Positioned(
+            right: 7,
+            top: 7,
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: selected ? context.colors.primary : Colors.black38,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                selecting
+                    ? (selected ? Icons.check_rounded : Icons.circle_outlined)
+                    : Icons.favorite_rounded,
+                color: selecting ? Colors.white : context.colors.primary,
+                size: 14,
+              ),
+            ),
+          ),
+      ],
+    );
+    if (fixedTitleHeight != null) return Expanded(child: cover);
+    return AspectRatio(aspectRatio: aspectRatio, child: cover);
+  }
 }
 
 class TagPill extends StatelessWidget {
