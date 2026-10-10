@@ -132,9 +132,12 @@ class AppUpdateService {
       ),
     );
 
+    // 检测本仓库自己发布的 Release（原来是上游作者的仓库）。
+    // 直连不通时回退到 ghproxy 镜像。
+    const repo = 'JubalJubal/minireel-tv';
     final urls = [
-      'https://api.github.com/repos/yixuexiaoao/minireel-tv/releases/latest',
-      'https://ghproxy.net/https://api.github.com/repos/yixuexiaoao/minireel-tv/releases/latest',
+      'https://api.github.com/repos/$repo/releases/latest',
+      'https://ghproxy.net/https://api.github.com/repos/$repo/releases/latest',
     ];
 
     for (final url in urls) {
