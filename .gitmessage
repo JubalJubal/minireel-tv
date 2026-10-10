@@ -1,0 +1,13 @@
+# <type>(<scope>): <50 字以内的简短描述>
+#
+# 为什么做这个改动（背景、要解决的问题）：
+#
+# 怎么验证（命令、设备、场景）：
+#
+# ---- 提交信息规范（不随提交写入，仅作提示） ----
+# type 取值：feat | fix | perf | refactor | docs | test | build | ci | chore | revert
+# scope 可选：player | library | settings | windows | android | tv | ci | deps
+# 标题：动词开头、不以句号结尾、不超过 50 个字符
+# 正文：每行不超过 72 个字符，说明「为什么」而不是「怎么做」
+# 破坏性变更：标题加 !（如 feat(api)!: ...），并在正文写 BREAKING CHANGE: 说明
+# 关联议题：正文最后单独一行写 Closes #123

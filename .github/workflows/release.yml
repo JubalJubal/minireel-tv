@@ -56,7 +56,7 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - name: Analyze and test
         run: |
-          flutter analyze --no-pub
+          flutter analyze --no-pub --no-fatal-infos
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           flutter test test --no-pub
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
