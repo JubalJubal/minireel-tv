@@ -198,10 +198,9 @@ class _TVDebugPadState extends State<TVDebugPad> {
           return;
       }
     }
-    final current = FocusManager.instance.primaryFocus;
-    if (current == null) return;
-    final policy = FocusTraversalGroup.of(current.context!);
-    policy.inDirection(current, direction);
+    // 与真实遥控器共用同一段处理：方向键到最左仍无法左移时会唤出导航栏，
+    // 否则虚拟手柄只能移动焦点、永远唤不出菜单。
+    handleDpadDirection(direction);
   }
 
   /// 激活当前焦点节点（模拟遥控器 OK / Enter）。

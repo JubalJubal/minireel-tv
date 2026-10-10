@@ -205,10 +205,11 @@ class _TVAppShellState extends State<TVAppShell> {
         _searchFocus.requestFocus();
         return;
       }
-      final firstTag = TVFocusRegistry.get('firstTag');
-      if (firstTag != null && firstTag.rect.width > 0) {
-        contentEntryFocusNode = firstTag;
-        firstTag.requestFocus();
+      // 没有搜索按钮（非综合频道）时，落到网格第一张卡片
+      final firstCard = TVFocusRegistry.get('firstGridCard');
+      if (firstCard != null && firstCard.rect.width > 0) {
+        contentEntryFocusNode = firstCard;
+        firstCard.requestFocus();
         return;
       }
       contentEntryFocusNode = _contentScope;

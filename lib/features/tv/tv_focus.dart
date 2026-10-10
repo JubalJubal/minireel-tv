@@ -801,6 +801,29 @@ class TVFocusTraversalPolicy extends FocusTraversalPolicy {
   }
 }
 
+/// 统一的 D-pad 方向处理：先按几何方向移动焦点；当方向为「左」且已经
+/// 无法继续左移时，改而请求唤出导航栏（[onNavRevealRequested]）。
+///
+/// 真实遥控器（[TVDpadInterceptor]）与调试虚拟遥控器（[TVDebugPad]）共用
+/// 这段逻辑——否则虚拟手柄只调 inDirection，永远触发不了「到边唤出」。
+bool handleDpadDirection(TraversalDirection direction) {
+  final current = FocusManager.instance.primaryFocus;
+  if (current == null) return false;
+  final context = current.context;
+  if (context == null) return false;
+  final policy = FocusTraversalGroup.of(context);
+  if (policy is TVFocusTraversalPolicy) {
+    if (policy.inDirection(current, direction)) return true;
+  } else if (current.focusInDirection(direction)) {
+    return true;
+  }
+  if (direction == TraversalDirection.left && onNavRevealRequested != null) {
+    onNavRevealRequested!();
+    return true;
+  }
+  return false;
+}
+
 /// 全局 D-pad 方向键拦截器：拦截真实遥控器/键盘方向键，
 /// 强制走 [TVFocusTraversalPolicy.inDirection] 移动焦点，
 /// 阻止 Scrollable/ListView 消费方向键做滚动。
@@ -826,27 +849,9 @@ class TVDpadInterceptor extends StatelessWidget {
       direction = TraversalDirection.right;
     }
     if (direction == null) return KeyEventResult.ignored;
-    final current = FocusManager.instance.primaryFocus;
-    if (current == null) return KeyEventResult.ignored;
-    // 走当前 group 的 TVFocusTraversalPolicy
-    final policy = FocusTraversalGroup.of(current.context!);
-    if (policy is TVFocusTraversalPolicy) {
-      if (policy.inDirection(current, direction)) {
-        return KeyEventResult.handled;
-      }
-      // 内容区已到最左、无法继续左移时，改而唤出导航抽屉。
-      if (direction == TraversalDirection.left &&
-          onNavRevealRequested != null) {
-        onNavRevealRequested!();
-        return KeyEventResult.handled;
-      }
-    } else {
-      // 兑底：用 Flutter 默认 inDirection
-      if (current.focusInDirection(direction)) {
-        return KeyEventResult.handled;
-      }
-    }
-    return KeyEventResult.ignored;
+    return handleDpadDirection(direction)
+        ? KeyEventResult.handled
+        : KeyEventResult.ignored;
   }
 
   @override

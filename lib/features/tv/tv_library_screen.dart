@@ -38,10 +38,8 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
   bool _shortOnly = false;
   CatalogOrder _order = CatalogOrder.recommended;
   final _scroll = ScrollController();
-  /// 内容网格区的焦点节点：用于检测焦点是否进入网格，从而折叠顶部分类/标签行。
+  /// 内容网格区的焦点节点：把网格标记成一个独立焦点子树。
   final _contentFocus = FocusNode(debugLabel: 'tv-library-content');
-  /// 焦点是否在下方网格区（true 时折叠二级分类 + 热门标签行，腾出高度给网格）。
-  bool _gridFocused = false;
   /// 缓存的筛选结果：避免每次 build 都全量 filter+sort。
   /// 仅在 catalog 长度变化（loadMore/refresh）或筛选条件变化时重算。
   List<Drama> _cachedItems = const [];
@@ -112,20 +110,11 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
         }
       }
     });
-    _contentFocus.addListener(_onContentFocusChanged);
-  }
-
-  void _onContentFocusChanged() {
-    final focused = _contentFocus.hasFocus;
-    if (focused != _gridFocused) {
-      setState(() => _gridFocused = focused);
-    }
   }
 
   @override
   void dispose() {
     _scroll.dispose();
-    _contentFocus.removeListener(_onContentFocusChanged);
     _contentFocus.dispose();
     super.dispose();
   }
@@ -159,12 +148,12 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                   children: [
                     Row(
                       children: [
-                        // 悬浮在最上方的圆形搜索按钮：只在「综合」频道显示，
-                        // 切到其他频道（真人剧/漫剧/AI剧/动漫）时自动隐藏。
+                        // 圆形搜索按钮：只在「综合」频道显示，切到其他频道
+                        // （真人剧/漫剧/AI剧/动漫）时自动隐藏。
                         // 焦点落到按钮上不进入，按 OK 才打开搜索页。
-                        if (widget.channel == null) ...[
+                        if (widget.channel == null)
                           TVFocusable(
-                            radius: 32,
+                            radius: 26,
                             onTap: () => Navigator.of(context).push(
                               MaterialPageRoute<void>(
                                 builder: (_) =>
@@ -174,8 +163,8 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                             focusNode: widget.searchFocus,
                             semanticLabel: '搜索',
                             child: Container(
-                              width: 52,
-                              height: 52,
+                              width: 40,
+                              height: 40,
                               decoration: BoxDecoration(
                                 color: context.colors.primary,
                                 shape: BoxShape.circle,
@@ -183,109 +172,63 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                                 // 否则同为强调色的焦点环完全看不出来
                                 border: Border.all(
                                   color: Colors.white.withValues(alpha: .85),
-                                  width: 2,
+                                  width: 1.5,
                                 ),
                                 boxShadow: [
                                   BoxShadow(
                                     color: context.colors.primary.withValues(
-                                      alpha: .45,
+                                      alpha: .42,
                                     ),
-                                    blurRadius: 16,
-                                    offset: const Offset(0, 6),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
                                   ),
                                 ],
                               ),
                               child: const Icon(
                                 Icons.search_rounded,
-                                size: 26,
+                                size: 21,
                                 color: Colors.white,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 16),
-                        ],
-                        const BrandMark(size: 36),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    // 热门标签 + 筛选：焦点进入下方网格时折叠，腾出高度。
-                    // 频道分类已挪到侧边导航栏，内容区不再占一整行。
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      alignment: Alignment.topCenter,
-                      child: _gridFocused
-                          ? const SizedBox.shrink()
-                          : Row(
+                        const Spacer(),
+                        // 热门标签行已移除，筛选入口常驻顶部右侧
+                        TVFocusable(
+                          radius: 20,
+                          focusRole: 'filter',
+                          onTap: () => _openFilters(popularTags.toList()),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            child: Row(
                               children: [
-                                Expanded(
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    child: Row(
-                                      children: [
-                                        for (int i = 0;
-                                            i < popularTags.length && i < 12;
-                                            i++)
-                                          Padding(
-                                            padding:
-                                                const EdgeInsets.only(right: 8),
-                                            child: _TVTagPill(
-                                              popularTags.elementAt(i),
-                                              selected: _tags.contains(
-                                                popularTags.elementAt(i),
-                                              ),
-                                              role: i == 0 ? 'firstTag' : 'tag',
-                                              onTap: () => setState(() {
-                                                final tag =
-                                                    popularTags.elementAt(i);
-                                                if (!_tags.add(tag)) {
-                                                  _tags.remove(tag);
-                                                }
-                                              }),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
+                                Icon(
+                                  Icons.filter_list_rounded,
+                                  size: 18,
+                                  color: _filtered
+                                      ? context.colors.primary
+                                      : context.muted,
                                 ),
-                                TVFocusable(
-                                  radius: 20,
-                                  focusRole: 'filter',
-                                  onTap: () =>
-                                      _openFilters(popularTags.toList()),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.filter_list_rounded,
-                                          size: 18,
-                                          color: _filtered
-                                              ? context.colors.primary
-                                              : context.muted,
-                                        ),
-                                        const SizedBox(width: 5),
-                                        Text(
-                                          '筛选',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: _filtered
-                                                ? FontWeight.w600
-                                                : FontWeight.w400,
-                                            color: _filtered
-                                                ? context.colors.primary
-                                                : context.muted,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  '筛选',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: _filtered
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    color: _filtered
+                                        ? context.colors.primary
+                                        : context.muted,
                                   ),
                                 ),
                               ],
                             ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
