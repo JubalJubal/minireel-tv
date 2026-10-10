@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../app/theme.dart';
 import '../../app/platform.dart';
@@ -294,23 +295,47 @@ class _MarqueeTitle extends StatefulWidget {
 
 class _MarqueeTitleState extends State<_MarqueeTitle>
     with SingleTickerProviderStateMixin {
-  /// 滚完一屏文字所需时长；间距用于和后一份文字拉开距离实现无缝循环。
-  static const Duration _cycle = Duration(seconds: 6);
+  /// 每帧推进的逻辑像素（60fps 下约 60 px/s），以及两段文字的间隔。
+  static const double _stepPerFrame = 1.0;
   static const double _gap = 56;
 
-  late final AnimationController _controller;
+  late final Ticker _ticker;
+  double _dx = 0;
+  double _textWidth = 0;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: _cycle)..repeat();
+    // 用 Ticker 按帧直接推进偏移。原来用 AnimationController.repeat()
+    // 在 TV 环境上会停住不推进，标题卡在某个固定偏移，后半段永远露不出来。
+    _ticker = createTicker(_onTick)..start();
+  }
+
+  void _onTick(Duration elapsed) {
+    if (_textWidth <= 0) return;
+    final cycle = _textWidth + _gap;
+    // 按帧推进，而不是按 elapsed 算时间：模拟器 / 部分 TV 盒子上 frame
+    // callback 的 elapsed 长时间不前进（UI 被 throttle），按时间算的话
+    // 标题每秒只挪几个像素，看起来就是「跑马灯没生效、后半段看不到」。
+    setState(() {
+      _dx -= _stepPerFrame;
+      // 滚完一整段后回到起点，无缝循环
+      if (_dx <= -cycle) _dx += cycle;
+    });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ticker.dispose();
     super.dispose();
   }
+
+  Widget _text() => Text(
+    widget.text,
+    maxLines: 1,
+    softWrap: false,
+    style: widget.style,
+  );
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -320,54 +345,36 @@ class _MarqueeTitleState extends State<_MarqueeTitle>
         maxLines: 1,
         textDirection: Directionality.of(context),
       )..layout();
-      final textWidth = painter.width;
-      if (textWidth <= constraints.maxWidth) {
+      _textWidth = painter.width;
+      if (_textWidth <= constraints.maxWidth) {
         // 放得下就不滚，静止显示
-        return Text(
-          widget.text,
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.clip,
-          style: widget.style,
-        );
+        return _text();
       }
-      final distance = textWidth + _gap;
-      // 固定成「容器宽 × 单行高」再裁剪：否则 Stack 会被文字撑宽，
-      // ClipRect 按那个宽度裁，跟在后面的第二份文字就永远露不出来，
-      // 滚动时右侧一直空着一块、看起来像文字被截断。
+      final cycle = _textWidth + _gap;
+      final dx = _dx.clamp(-cycle, 0.0);
+      // 用 OverflowBox 让 Row 取自然宽度（两份文字 + 间隔），再整体平移，
+      // 由外层 ClipRect 裁到容器宽。不能用 Stack 装这两份文字：它的尺寸
+      // 要么被文字撑开、要么被 SizedBox 压窄，两种情况下第二份都露不出来，
+      // 表现就是滚动时右侧一直空着、只剩中间几个字。
       return SizedBox(
         width: constraints.maxWidth,
         height: painter.height,
         child: ClipRect(
-          child: AnimatedBuilder(
-            animation: _controller,
-            builder: (context, _) {
-              final dx = -distance * _controller.value;
-              return Stack(
-                clipBehavior: Clip.none,
+          child: OverflowBox(
+            alignment: Alignment.centerLeft,
+            maxWidth: double.infinity,
+            child: Transform.translate(
+              offset: Offset(dx, 0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Transform.translate(
-                    offset: Offset(dx, 0),
-                    child: Text(
-                      widget.text,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: widget.style,
-                    ),
-                  ),
+                  _text(),
+                  const SizedBox(width: _gap),
                   // 第二份紧跟在后面，形成无缝循环
-                  Transform.translate(
-                    offset: Offset(dx + distance, 0),
-                    child: Text(
-                      widget.text,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: widget.style,
-                    ),
-                  ),
+                  _text(),
                 ],
-              );
-            },
+              ),
+            ),
           ),
         ),
       );
