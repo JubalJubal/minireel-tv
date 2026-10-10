@@ -17,16 +17,22 @@ import 'tv_search_screen.dart';
 /// 复用 LibraryScreen 的数据逻辑（channel/tag/filter/order），
 /// UI 改为 TV 适配：所有可交互元素用 TVFocusable 包裹，D-pad 可操作。
 class TVLibraryScreen extends StatefulWidget {
-  const TVLibraryScreen({super.key, required this.onPlay, required this.searchFocus});
+  const TVLibraryScreen({
+    super.key,
+    required this.onPlay,
+    required this.searchFocus,
+    this.channel,
+  });
   final void Function(Drama drama, [int? episode]) onPlay;
   /// 顶部搜索框的焦点节点，由 TVAppShell 统一持有。
   final FocusNode searchFocus;
+  /// 当前频道，由 TVAppShell 的侧边导航控制；null 表示「综合」。
+  final DramaChannel? channel;
   @override
   State<TVLibraryScreen> createState() => _TVLibraryScreenState();
 }
 
 class _TVLibraryScreenState extends State<TVLibraryScreen> {
-  DramaChannel? _channel;
   Set<String> _tags = {};
   ReleaseStatus? _status;
   bool _shortOnly = false;
@@ -50,7 +56,7 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
 
   /// 筛选条件签名：任一筛选状态变化时改变，用于判断缓存是否失效。
   String get _filterSignature =>
-      '${_channel?.name}|${_tags.toList()..sort()}|$_status|$_shortOnly|${_order.name}';
+      '${widget.channel?.name}|${_tags.toList()..sort()}|$_status|$_shortOnly|${_order.name}';
 
   /// 按需重算筛选结果。catalog 长度或筛选条件变化时才重算，
   /// 焦点切换等不触发 repository、不改筛选的 build 直接命中缓存。
@@ -63,7 +69,10 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
     _cachedCatalogLength = catalogLength;
     _cachedFilterSignature = sig;
     final available = repo.catalog
-        .where((drama) => _channel == null || drama.channel == _channel)
+        .where(
+          (drama) =>
+              widget.channel == null || drama.channel == widget.channel,
+        )
         .toList();
     final items = available
         .where(
@@ -98,7 +107,9 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
     _scroll.addListener(() {
       if (_scroll.position.extentAfter < 700) {
         final repo = AppScope.read(context).repository;
-        if (repo.errors.isEmpty) unawaited(repo.loadMore(channel: _channel));
+        if (repo.errors.isEmpty) {
+          unawaited(repo.loadMore(channel: widget.channel));
+        }
       }
     });
     _contentFocus.addListener(_onContentFocusChanged);
@@ -188,94 +199,78 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    // 二级分类 + 热门标签：焦点进入下方网格时折叠，腾出高度
+                    // 热门标签 + 筛选：焦点进入下方网格时折叠，腾出高度。
+                    // 频道分类已挪到侧边导航栏，内容区不再占一整行。
                     AnimatedSize(
                       duration: const Duration(milliseconds: 220),
                       curve: Curves.easeOutCubic,
                       alignment: Alignment.topCenter,
                       child: _gridFocused
                           ? const SizedBox.shrink()
-                          : Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          : Row(
                               children: [
-                                // 分类 + 筛选行
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: SingleChildScrollView(
-                                        scrollDirection: Axis.horizontal,
-                                        child: Row(
-                                          children: [
-                                            _category(null, '综合', role: 'firstCategory'),
-                                            for (final channel
-                                                in DramaChannel.values)
-                                              _category(channel, channel.label, role: 'category'),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    TVFocusable(
-                                      radius: 20,
-                                      focusRole: 'filter',
-                                      onTap: () =>
-                                          _openFilters(popularTags.toList()),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 8,
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              Icons.filter_list_rounded,
-                                              size: 18,
-                                              color: _filtered
-                                                  ? context.colors.primary
-                                                  : context.muted,
-                                            ),
-                                            const SizedBox(width: 5),
-                                            Text(
-                                              '筛选',
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: _filtered
-                                                    ? FontWeight.w600
-                                                    : FontWeight.w400,
-                                                color: _filtered
-                                                    ? context.colors.primary
-                                                    : context.muted,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                // 热门标签（靠左对齐）
-                                Align(
-                                  alignment: Alignment.centerLeft,
+                                Expanded(
                                   child: SingleChildScrollView(
                                     scrollDirection: Axis.horizontal,
                                     child: Row(
                                       children: [
-                                        for (int i = 0; i < popularTags.length && i < 12; i++)
+                                        for (int i = 0;
+                                            i < popularTags.length && i < 12;
+                                            i++)
                                           Padding(
                                             padding:
                                                 const EdgeInsets.only(right: 8),
                                             child: _TVTagPill(
                                               popularTags.elementAt(i),
-                                              selected: _tags.contains(popularTags.elementAt(i)),
+                                              selected: _tags.contains(
+                                                popularTags.elementAt(i),
+                                              ),
                                               role: i == 0 ? 'firstTag' : 'tag',
                                               onTap: () => setState(() {
-                                                final tag = popularTags.elementAt(i);
+                                                final tag =
+                                                    popularTags.elementAt(i);
                                                 if (!_tags.add(tag)) {
                                                   _tags.remove(tag);
                                                 }
                                               }),
                                             ),
                                           ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                TVFocusable(
+                                  radius: 20,
+                                  focusRole: 'filter',
+                                  onTap: () =>
+                                      _openFilters(popularTags.toList()),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.filter_list_rounded,
+                                          size: 18,
+                                          color: _filtered
+                                              ? context.colors.primary
+                                              : context.muted,
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          '筛选',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: _filtered
+                                                ? FontWeight.w600
+                                                : FontWeight.w400,
+                                            color: _filtered
+                                                ? context.colors.primary
+                                                : context.muted,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -343,7 +338,7 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                     slivers: [
                       if (app.history.isNotEmpty &&
                           !_filtered &&
-                          _channel == null)
+                          widget.channel == null)
                         SliverToBoxAdapter(child: _continueWatching(app)),
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -412,10 +407,11 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : repo.hasMoreFor(_channel)
+                                : repo.hasMoreFor(widget.channel)
                                 ? TextButton(
-                                    onPressed: () =>
-                                        repo.loadMore(channel: _channel),
+                                    onPressed: () => repo.loadMore(
+                                      channel: widget.channel,
+                                    ),
                                     child: const Text('加载更多'),
                                   )
                                 : Text(
@@ -441,45 +437,16 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
     );
   }
 
-  Widget _category(DramaChannel? value, String label, {String? role}) {
-    final selected = _channel == value;
-    return Padding(
-      padding: const EdgeInsets.only(right: 4),
-      child: TVFocusable(
-        radius: 8,
-        focusRole: role,
-        onTap: () => setState(() {
-          _channel = value;
-          _tags.clear();
-          if (_scroll.hasClients) _scroll.jumpTo(0);
-        }),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-          child: Column(
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? context.colors.onSurface : context.muted,
-                ),
-              ),
-              const SizedBox(height: 6),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                height: 3,
-                width: selected ? 20 : 0,
-                decoration: BoxDecoration(
-                  color: context.colors.primary,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  @override
+  void didUpdateWidget(TVLibraryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 侧边导航切换频道：清掉标签筛选并回到列表顶部，让新频道从第一屏开始。
+    if (oldWidget.channel != widget.channel) {
+      _tags.clear();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _scroll.hasClients) _scroll.jumpTo(0);
+      });
+    }
   }
 
   Widget _continueWatching(AppController app) {

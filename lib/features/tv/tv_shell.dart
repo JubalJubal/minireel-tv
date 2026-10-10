@@ -32,10 +32,16 @@ class TVAppShell extends StatefulWidget {
 class _TVAppShellState extends State<TVAppShell> {
   /// 导航抽屉宽度，与 [_TVNavigation] 的固定宽度保持一致。
   static const double _navWidth = 200;
-  int _tab = 0;
+  /// 当前聚焦的导航项下标。焦点即选中：焦点一落到菜单项就切换内容。
+  int _navIndex = 0;
   bool _openingPlayer = false;
   /// 导航抽屉是否滑出。默认 false：完全移出屏幕左侧，不留图标、不占画幅。
   bool _navVisible = false;
+
+  /// 当前导航项对应的页面下标（IndexedStack 的 index）。
+  int get _tab => _TVNavItem.all[_navIndex].page;
+  /// 当前导航项对应的短剧库频道；null 表示「综合」。
+  DramaChannel? get _channel => _TVNavItem.all[_navIndex].channel;
   /// 顶部搜索框的焦点节点：由 shell 统一持有，用于
   /// 1) 初始焦点落在搜索框（而非导航栏）
   /// 2) 从导航栏按→进入内容区时统一落到搜索框
@@ -123,18 +129,18 @@ class _TVAppShellState extends State<TVAppShell> {
     setState(() => _navVisible = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_navVisible) return;
-      TVFocusRegistry.get('navItem$_tab')?.requestFocus();
+      TVFocusRegistry.get('navItem$_navIndex')?.requestFocus();
     });
   }
 
-  /// 收回导航抽屉，焦点回到当前 tab 的内容区入口。
+  /// 收回导航抽屉，焦点回到当前页面的内容区入口。
   void _hideNav() {
     if (!_navVisible || !mounted) return;
     setState(() => _navVisible = false);
     _applyContentEntry(_tab);
   }
 
-  /// 焦点一离开导航项就收回抽屉，覆盖「在抽屉里按右键」与「选中后进内容区」。
+  /// 焦点一离开导航项就收回抽屉，覆盖「在抽屉里按右键」与「进入内容区」。
   void _onPrimaryFocusChanged() {
     if (!_navVisible) return;
     final focus = FocusManager.instance.primaryFocus;
@@ -144,7 +150,8 @@ class _TVAppShellState extends State<TVAppShell> {
   }
 
   /// 鼠标交互：右键唤出导航，左键点击导航之外的区域收回。
-  void _handlePointerDown(PointerDownEvent event) {    if (event.buttons == kSecondaryMouseButton) {
+  void _handlePointerDown(PointerDownEvent event) {
+    if (event.buttons == kSecondaryMouseButton) {
       _showNav();
       return;
     }
@@ -155,17 +162,24 @@ class _TVAppShellState extends State<TVAppShell> {
     }
   }
 
-  /// 切换 tab 并把焦点移到内容区。
+  /// 焦点落到导航项：立即切换内容，但焦点留在导航栏。
   ///
-  /// 导航项 onTap 调用。切 tab 后焦点若留在导航栏，用户按→会触发
-  /// TVFocusTraversalPolicy 的「导航栏→内容区」特判，落到
-  /// [contentEntryFocusNode]。这里在切 tab 时同步更新该入口节点，
-  /// 并主动把焦点收到内容区，避免焦点留在导航栏。
-  void _selectTab(int tab) {
-    setState(() => _tab = tab);
+  /// 电视交互是「焦点即预览」：在菜单里上下移动就能看到对应页面，
+  /// 不需要再按 OK；用户可以继续上下浏览，直到按 OK 或右键进入内容区。
+  void _previewNav(int index) {
+    if (!mounted || index == _navIndex) return;
+    setState(() => _navIndex = index);
+  }
+
+  /// 进入导航项对应页面：焦点移到内容区，抽屉随之收回。
+  ///
+  /// 用于按 OK、点击菜单项，以及「我的」页里的「去逛剧库」。
+  void _activateNav(int index) {
+    if (!mounted) return;
+    if (index != _navIndex) setState(() => _navIndex = index);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _applyContentEntry(tab);
+      _applyContentEntry(_tab);
     });
   }
 
@@ -208,7 +222,7 @@ class _TVAppShellState extends State<TVAppShell> {
 
   void _handleBack() {
     if (_tab != 0) {
-      _selectTab(0);
+      _activateNav(0);
       return;
     }
     final now = DateTime.now();
@@ -260,11 +274,12 @@ class _TVAppShellState extends State<TVAppShell> {
                             TVLibraryScreen(
                               onPlay: _play,
                               searchFocus: _searchFocus,
+                              channel: _channel,
                             ),
                             TVRankingsScreen(onPlay: _play),
                             TVMineScreen(
                               onPlay: _play,
-                              onExplore: () => _selectTab(0),
+                              onExplore: () => _activateNav(0),
                             ),
                             TVSettingsScreen(),
                           ],
@@ -288,8 +303,9 @@ class _TVAppShellState extends State<TVAppShell> {
                         key: navRegionKey,
                         policy: TVFocusTraversalPolicy(),
                         child: _TVNavigation(
-                          selected: _tab,
-                          onSelect: _selectTab,
+                          selected: _navIndex,
+                          onFocusItem: _previewNav,
+                          onActivateItem: _activateNav,
                         ),
                       ),
                     ),
@@ -304,78 +320,144 @@ class _TVAppShellState extends State<TVAppShell> {
   }
 }
 
+/// 侧边导航项：短剧库的频道分类（综合/真人剧/漫剧/AI剧/动漫），
+/// 以及热播榜/我的/设置三个功能页。
+///
+/// 频道项与「综合」共用短剧库页面（page 0），只是切换筛选条件；
+/// 这样分类就不再占用内容区顶部的一整行。
+class _TVNavItem {
+  const _TVNavItem(
+    this.label,
+    this.icon,
+    this.activeIcon, {
+    required this.page,
+    this.channel,
+  });
+
+  final String label;
+  final IconData icon;
+  final IconData activeIcon;
+  /// IndexedStack 的页面下标：0 短剧库、1 热播榜、2 我的、3 设置。
+  final int page;
+  /// 短剧库内的频道筛选；null 表示「综合」（不筛选）。
+  final DramaChannel? channel;
+
+  /// 前 [channelCount] 项是短剧库的频道，其后是独立页面。
+  static const List<_TVNavItem> all = [
+    _TVNavItem('综合', Icons.grid_view_outlined, Icons.grid_view_rounded,
+        page: 0),
+    _TVNavItem('真人剧', Icons.videocam_outlined, Icons.videocam_rounded,
+        page: 0, channel: DramaChannel.real),
+    _TVNavItem('漫剧', Icons.auto_stories_outlined, Icons.auto_stories_rounded,
+        page: 0, channel: DramaChannel.comicDrama),
+    _TVNavItem('AI剧', Icons.smart_toy_outlined, Icons.smart_toy_rounded,
+        page: 0, channel: DramaChannel.ai),
+    _TVNavItem('动漫', Icons.animation_outlined, Icons.animation_rounded,
+        page: 0, channel: DramaChannel.animation),
+    _TVNavItem('热播榜', Icons.emoji_events_outlined,
+        Icons.emoji_events_rounded, page: 1),
+    _TVNavItem('我的', Icons.person_outline_rounded, Icons.person_rounded,
+        page: 2),
+    _TVNavItem('设置', Icons.tune_rounded, Icons.tune_rounded, page: 3),
+  ];
+
+  /// 短剧库频道分组在 [all] 中的数量。
+  static const int channelCount = 5;
+}
+
 /// TV 侧边导航栏。图标 + 文字标签（TV 10 尺距离需文字辅助）。
+///
+/// 交互：焦点落到某一项就立即切换内容（焦点即预览），按 OK 才把焦点
+/// 交回内容区；这样在菜单里上下浏览时能直接看到每个页面的效果。
 class _TVNavigation extends StatelessWidget {
   const _TVNavigation({
     required this.selected,
-    required this.onSelect,
+    required this.onFocusItem,
+    required this.onActivateItem,
   });
   final int selected;
-  final ValueChanged<int> onSelect;
+  final ValueChanged<int> onFocusItem;
+  final ValueChanged<int> onActivateItem;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: 200,
-    decoration: BoxDecoration(
-      color: context.colors.surface,
-      // 抽屉覆盖在内容之上，用右侧阴影拉开层次
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: .38),
-          blurRadius: 28,
-          offset: const Offset(8, 0),
-        ),
-      ],
-    ),
-    child: Column(
-      children: [
-        const SizedBox(height: 28),
-        const BrandMark(size: 40),
-        const SizedBox(height: 8),
-        Text(
-          'MiniReel',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: context.muted,
-            letterSpacing: 1.5,
+  Widget build(BuildContext context) {
+    final items = _TVNavItem.all;
+    return Container(
+      width: 200,
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        // 抽屉覆盖在内容之上，用右侧阴影拉开层次
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .38),
+            blurRadius: 28,
+            offset: const Offset(8, 0),
           ),
-        ),
-        const SizedBox(height: 32),
-        _destination(context, 0, '短剧库', Icons.movie_outlined, Icons.movie_rounded),
-        const SizedBox(height: 10),
-        _destination(context, 1, '热播榜', Icons.emoji_events_outlined, Icons.emoji_events_rounded),
-        const SizedBox(height: 10),
-        _destination(context, 2, '我的', Icons.person_outline_rounded, Icons.person_rounded),
-        const Spacer(),
-        _destination(context, 3, '设置', Icons.tune_rounded, Icons.tune_rounded),
-        const SizedBox(height: 28),
-      ],
-    ),
-  );
+        ],
+      ),
+      // 8 个导航项在浅屏（横屏约 384dp 高）会超出可视高度：用可滚动的
+      // Column 承载，既不溢出，也不会像 ListView 那样把视口外的项懒加载掉
+      // 导致 D-pad 聚焦不到「我的 / 设置」。
+      child: Column(
+        children: [
+          const SizedBox(height: 14),
+          const BrandMark(size: 32),
+          const SizedBox(height: 4),
+          Text(
+            'MiniReel',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: context.muted,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                children: [
+                  // 短剧库频道分组
+                  for (int i = 0; i < _TVNavItem.channelCount; i++)
+                    _destination(context, items[i], i),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                    child: Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: Theme.of(context).dividerColor,
+                    ),
+                  ),
+                  // 热播榜 / 我的 / 设置
+                  for (int i = _TVNavItem.channelCount; i < items.length; i++)
+                    _destination(context, items[i], i),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  Widget _destination(
-    BuildContext context,
-    int index,
-    String label,
-    IconData icon,
-    IconData activeIcon,
-  ) {
+  Widget _destination(BuildContext context, _TVNavItem item, int index) {
     final isSel = selected == index;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
       child: TVFocusable(
         radius: 13,
         // 角色供抽屉唤出时定位当前选中项（TVFocusRegistry.get）
         focusRole: 'navItem$index',
-        onTap: () => onSelect(index),
-        // 默认焦点交给内容区顶部搜索框（TVLibraryScreen 内 autofocus: true），
-        // 导航栏不抢初始焦点；D-pad 左键可从内容区进入导航栏。
-        semanticLabel: label,
+        // 焦点即预览：焦点一落到本项就切换内容，无需按 OK
+        onFocus: () => onFocusItem(index),
+        // OK / 点击才真正进入页面（焦点交回内容区，抽屉收回）
+        onTap: () => onActivateItem(index),
+        semanticLabel: item.label,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 12),
           decoration: BoxDecoration(
             color: isSel
                 ? context.colors.primary.withValues(alpha: .1)
@@ -389,23 +471,23 @@ class _TVNavigation extends StatelessWidget {
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOutCubic,
                 width: 3,
-                height: 20,
+                height: 18,
                 decoration: BoxDecoration(
                   color: isSel ? context.colors.primary : Colors.transparent,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Icon(
-                isSel ? activeIcon : icon,
-                size: 22,
+                isSel ? item.activeIcon : item.icon,
+                size: 19,
                 color: isSel ? context.colors.primary : context.muted,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Text(
-                label,
+                item.label,
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
                   color: isSel ? context.colors.onSurface : context.muted,
                 ),

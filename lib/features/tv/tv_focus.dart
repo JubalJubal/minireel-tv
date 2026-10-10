@@ -155,6 +155,7 @@ class TVFocusable extends StatefulWidget {
     this.focusNode,
     this.semanticLabel,
     this.focusRole,
+    this.onFocus,
   });
 
   final Widget child;
@@ -168,6 +169,9 @@ class TVFocusable extends StatefulWidget {
   final FocusNode? focusNode;
   final String? semanticLabel;
   final String? focusRole;
+  /// 节点获得焦点时回调。TV 侧边导航用它在「焦点落到菜单项」时
+  /// 立即切换内容（焦点即预览），无需再按 OK 确认。
+  final VoidCallback? onFocus;
 
   @override
   State<TVFocusable> createState() => _TVFocusableState();
@@ -206,10 +210,16 @@ class _TVFocusableState extends State<TVFocusable>
         TVFocusRegistry.register(widget.focusRole!, _node);
       }
     }
+    // 焦点落到本节点时通知外部（TV 导航「焦点即预览」）
+    _node.addListener(_handleNodeFocus);
     // 监听全局抖动信号：本节点有焦点时触发抖动
     tvShakeSignal.addListener(_onShakeSignal);
     // 监听全局激活信号：本节点有焦点时执行 onTap（调试面板 OK 键）
     tvActivateSignal.addListener(_onActivateSignal);
+  }
+
+  void _handleNodeFocus() {
+    if (_node.hasFocus) widget.onFocus?.call();
   }
 
   void _onShakeSignal() {
@@ -228,6 +238,7 @@ class _TVFocusableState extends State<TVFocusable>
 
   @override
   void dispose() {
+    _node.removeListener(_handleNodeFocus);
     tvShakeSignal.removeListener(_onShakeSignal);
     tvActivateSignal.removeListener(_onActivateSignal);
     if (widget.focusRole != null) TVFocusRegistry.unregister(widget.focusRole!, _node);
