@@ -448,8 +448,12 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
   /// 卡片副标题：优先显示题材标签（最多两个），没有标签时退回分类。
   /// 不再显示集数 —— 挑剧时题材比集数有用，位置让给标签。
   String _cardSubtitle(Drama drama) {
-    if (drama.tags.isNotEmpty) return drama.tags.take(2).join(' · ');
-    return drama.category.isEmpty ? drama.channel.label : drama.category;
+    // 频道标签（真人剧 / 漫剧 / AI剧 / 动漫）始终保留在最前，
+    // 后面接题材标签（最多两个）；没有题材标签时退回分类。
+    final extras = drama.tags.isNotEmpty
+        ? drama.tags.take(2)
+        : <String>[if (drama.category.isNotEmpty) drama.category];
+    return [drama.channel.label, ...extras].join(' · ');
   }
 
   /// 按列数与可用宽度反推「整卡宽高比」，让 SliverGrid 的格子
