@@ -8,7 +8,6 @@ import '../../app/app_controller.dart';
 import '../../app/theme.dart';
 import '../../core/services/app_update_service.dart';
 import '../../domain/models/drama.dart';
-import '../shared/widgets.dart';
 import 'tv_focus.dart';
 import 'tv_library_screen.dart';
 import 'tv_mine_screen.dart';
@@ -493,19 +492,10 @@ class _TVNavigation extends StatelessWidget {
       // 导致 D-pad 聚焦不到「我的 / 设置」。
       child: Column(
         children: [
-          const SizedBox(height: 14),
-          const BrandMark(size: 32),
-          const SizedBox(height: 4),
-          Text(
-            'MiniReel',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: context.muted,
-              letterSpacing: 1.5,
-            ),
-          ),
-          const SizedBox(height: 10),
+          // 顶部留白：悬浮搜索按钮固定在屏幕左上角（24,16 起 40×40），
+          // 这里留出它占用的高度，避免与第一个导航项重叠。
+          // 原来放的 BrandMark + MiniReel 文字已移除（与搜索按钮挤在一起）。
+          const SizedBox(height: 64),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.only(bottom: 12),
