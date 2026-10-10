@@ -151,7 +151,7 @@ class DramaCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _titleBlock(drama.title),
+                  _titleBlock(context, drama.title),
                   const SizedBox(height: 4),
                   Text(
                     drama.subtitle,
@@ -171,21 +171,38 @@ class DramaCard extends StatelessWidget {
 
   /// 标题块。[fixedTitleHeight] 非空时固定高度，让 TV 网格里
   /// 单行标题与双行标题占用同样的空间，卡片高度完全对齐。
-  Widget _titleBlock(String title) {
+  Widget _titleBlock(BuildContext context, String title) {
+    const style = TextStyle(
+      fontSize: 13.5,
+      height: 1.35,
+      fontWeight: FontWeight.w600,
+    );
+    // 默认：最多两行，超出自动截断
     final text = Text(
       title,
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
-      style: const TextStyle(
-        fontSize: 13.5,
-        height: 1.35,
-        fontWeight: FontWeight.w600,
-      ),
+      style: style,
     );
     if (fixedTitleHeight == null) return text;
+    final aligned = Align(alignment: Alignment.topLeft, child: text);
+    // TV 网格：标题区固定两行高度；卡片获得焦点时改成单行跑马灯循环滚动，
+    // 让被截断的完整标题能读全；失焦后回到两行截断。
+    final focusNode = Focus.maybeOf(context);
+    if (focusNode == null) {
+      return SizedBox(height: fixedTitleHeight, child: aligned);
+    }
     return SizedBox(
       height: fixedTitleHeight,
-      child: Align(alignment: Alignment.topLeft, child: text),
+      child: ListenableBuilder(
+        listenable: focusNode,
+        builder: (context, _) => focusNode.hasFocus
+            ? Align(
+                alignment: Alignment.centerLeft,
+                child: _MarqueeTitle(text: title, style: style),
+              )
+            : aligned,
+      ),
     );
   }
 
@@ -261,6 +278,94 @@ class DramaCard extends StatelessWidget {
     if (fixedTitleHeight != null) return Expanded(child: cover);
     return AspectRatio(aspectRatio: aspectRatio, child: cover);
   }
+}
+
+/// 单行跑马灯标题：文字超出可用宽度时循环横向滚动，读全被截断的标题。
+///
+/// 只在卡片获得焦点时使用；失焦仍是普通两行截断，避免整屏同时滚动。
+class _MarqueeTitle extends StatefulWidget {
+  const _MarqueeTitle({required this.text, required this.style});
+  final String text;
+  final TextStyle style;
+
+  @override
+  State<_MarqueeTitle> createState() => _MarqueeTitleState();
+}
+
+class _MarqueeTitleState extends State<_MarqueeTitle>
+    with SingleTickerProviderStateMixin {
+  /// 滚完一屏文字所需时长；间距用于和后一份文字拉开距离实现无缝循环。
+  static const Duration _cycle = Duration(seconds: 6);
+  static const double _gap = 56;
+
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: _cycle)..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final painter = TextPainter(
+        text: TextSpan(text: widget.text, style: widget.style),
+        maxLines: 1,
+        textDirection: Directionality.of(context),
+      )..layout();
+      final textWidth = painter.width;
+      if (textWidth <= constraints.maxWidth) {
+        // 放得下就不滚，静止显示
+        return Text(
+          widget.text,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.clip,
+          style: widget.style,
+        );
+      }
+      final distance = textWidth + _gap;
+      return ClipRect(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            final dx = -distance * _controller.value;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Transform.translate(
+                  offset: Offset(dx, 0),
+                  child: Text(
+                    widget.text,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: widget.style,
+                  ),
+                ),
+                // 第二份紧跟在后面，形成无缝循环
+                Transform.translate(
+                  offset: Offset(dx + distance, 0),
+                  child: Text(
+                    widget.text,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: widget.style,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    },
+  );
 }
 
 class TagPill extends StatelessWidget {

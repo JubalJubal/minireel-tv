@@ -297,15 +297,8 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                                 child: DramaCard(
                                   drama: drama,
                                   favorite: app.isFavorite(drama.id),
-                                  // 统一保留文字区最后一行：没有排序指标时用空格占位，
-                                  // 避免「有指标 / 无指标」两种卡片高度不一致。
-                                  footer: Text(
-                                    sortMetric(drama, _order) ?? ' ',
-                                    style: TextStyle(
-                                      color: context.muted,
-                                      fontSize: 11,
-                                    ),
-                                  ),
+                                  // 不再放排序指标 footer：默认排序下它只是
+                                  // 一行空格占位，却让每张卡片底部多出一片空白。
                                   // 统一封面比例，并固定标题区为两行高度，
                                   // 卡片高度不再随标题行数或封面比例浮动。
                                   aspectRatio: _coverAspectRatio,
@@ -444,10 +437,10 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
   static const double _titleHeight = 13.5 * 1.35 * 2;
 
   /// 卡片文字区总高：标题区上下内边距(8+9) + 标题两行 + 间距 4 +
-  /// 副标题一行 + footer 行的间距与行高，再留 8px 余量，
-  /// 避免字体度量差异（不同 Flutter 版本 / 系统字号）导致底部溢出。
-  static const double _cardTextHeight =
-      8 + 9 + _titleHeight + 4 + 14 + 7 + 13.5 + 8;
+  /// 副标题一行，再留 6px 余量避免字体度量差异导致底部溢出。
+  /// 已不含排序指标 footer —— 那行在默认排序下只是空格占位，
+  /// 会让每张卡片底部多出一片空白。
+  static const double _cardTextHeight = 8 + 9 + _titleHeight + 4 + 14 + 6;
 
   /// 按列数与可用宽度反推「整卡宽高比」，让 SliverGrid 的格子
   /// 刚好容纳封面 + 文字区：同一行卡片高度完全一致，也不会溢出。
