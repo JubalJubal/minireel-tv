@@ -12,6 +12,7 @@ import 'package:minireel/desktop/desktop_window.dart';
 import 'package:minireel/features/player/desktop_player_controls.dart';
 import 'package:minireel/features/player/desktop_player_input.dart';
 import 'package:minireel/features/player/desktop_player_screen.dart';
+import 'package:minireel/features/settings/settings_screen.dart';
 
 import 'support/fakes.dart';
 
@@ -88,6 +89,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('收藏 1'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('tab-2')));
+    await tester.pumpAndSettle();
+    // 设置页是懒加载列表，桌面控制分组排在首屏之外；先滚动到目标再断言，
+    // 避免断言依赖具体屏幕高度或 Flutter 版本之间的排版差异。
+    await tester.scrollUntilVisible(
+      find.text('最小化时暂停'),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(SettingsScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.pumpAndSettle();
     expect(find.text('最小化时暂停'), findsOneWidget);
     expect(find.text('手势灵敏度'), findsNothing);
