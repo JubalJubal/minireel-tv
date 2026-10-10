@@ -51,6 +51,11 @@ class TVPlayerDebugActions {
 ///    纯几何查找会跳到网格中间的卡片。
 /// 2) [searchFocusNode]：顶部搜索框节点，供导航栏→内容区、初始焦点使用。
 final GlobalKey navRegionKey = GlobalKey(debugLabel: 'tv-nav-region');
+
+/// 导航栏当前是否展开可见。推挤布局下导航栏收起时宽度动画到 0，但它内部的
+/// RenderObject 仍有 200 宽的尺寸，[TVFocusTraversalPolicy] 需要这个标志
+/// 才能正确判断「节点是否落在可见的导航区内」。
+bool navRegionVisible = false;
 FocusNode? searchFocusNode;
 
 /// 焦点角色注册表：[TVFocusable] 可通过 [TVFocusable.focusRole] 注册一个
@@ -757,9 +762,11 @@ class TVFocusTraversalPolicy extends FocusTraversalPolicy {
   }
 
   bool _isInNavRegion(FocusNode node) {
-    // 用导航栏实际占据的矩形判断，而不是硬编码 x∈[0,200]。
-    // 导航抽屉收起时会滑到屏幕左侧之外，硬编码会把内容区第一列误判为
-    // 导航栏（从卡片按右键会被错误地拉回搜索框）。
+    // 用导航栏实际占据的矩形判断，而不是硬编码 x∈[0,200]；同时先用
+    // 可见性标志兜住 —— 导航栏收起时它仍占着一块布局（宽度动画到 0，
+    // 但内部 OverflowBox 的 RenderObject 仍是 200 宽且位于 x=0），
+    // 否则内容区左侧元素会被误判成导航栏。
+    if (!navRegionVisible) return false;
     final navContext = navRegionKey.currentContext;
     if (navContext == null) return false;
     final navObject = navContext.findRenderObject();

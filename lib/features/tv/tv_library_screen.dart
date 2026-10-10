@@ -159,42 +159,51 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                   children: [
                     Row(
                       children: [
-                        TVFocusable(
-                          radius: 28,
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) =>
-                                  TVSearchScreen(onPlay: widget.onPlay),
+                        // 悬浮在最上方的圆形搜索按钮：只在「综合」频道显示，
+                        // 切到其他频道（真人剧/漫剧/AI剧/动漫）时自动隐藏。
+                        // 焦点落到按钮上不进入，按 OK 才打开搜索页。
+                        if (widget.channel == null) ...[
+                          TVFocusable(
+                            radius: 32,
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    TVSearchScreen(onPlay: widget.onPlay),
+                              ),
                             ),
-                          ),
-                          focusNode: widget.searchFocus,
-                          semanticLabel: '搜索',
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              color: context.chipColor,
-                              borderRadius: BorderRadius.circular(28),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.search_rounded, size: 20, color: context.muted),
-                                const SizedBox(width: 10),
-                                Text(
-                                  '搜索剧名、题材或标签',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: context.muted,
-                                  ),
+                            focusNode: widget.searchFocus,
+                            semanticLabel: '搜索',
+                            child: Container(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: context.colors.primary,
+                                shape: BoxShape.circle,
+                                // 按钮本体就是主题色，加一圈白描边，
+                                // 否则同为强调色的焦点环完全看不出来
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: .85),
+                                  width: 2,
                                 ),
-                              ],
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: context.colors.primary.withValues(
+                                      alpha: .45,
+                                    ),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.search_rounded,
+                                size: 26,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 16),
+                          const SizedBox(width: 16),
+                        ],
                         const BrandMark(size: 36),
                       ],
                     ),

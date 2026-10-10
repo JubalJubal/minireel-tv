@@ -116,6 +116,7 @@ class _TVAppShellState extends State<TVAppShell> {
   void dispose() {
     FocusManager.instance.removeListener(_onPrimaryFocusChanged);
     onNavRevealRequested = null;
+    navRegionVisible = false;
     searchFocusNode = null;
     contentEntryFocusNode = null;
     _searchFocus.dispose();
@@ -126,6 +127,7 @@ class _TVAppShellState extends State<TVAppShell> {
   /// 唤出导航抽屉，并把焦点落到当前选中的导航项（遥控器可直接上下切换）。
   void _showNav() {
     if (_navVisible || !mounted) return;
+    navRegionVisible = true;
     setState(() => _navVisible = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_navVisible) return;
@@ -136,6 +138,7 @@ class _TVAppShellState extends State<TVAppShell> {
   /// 收回导航抽屉，焦点回到当前页面的内容区入口。
   void _hideNav() {
     if (!_navVisible || !mounted) return;
+    navRegionVisible = false;
     setState(() => _navVisible = false);
     _applyContentEntry(_tab);
   }
@@ -195,8 +198,21 @@ class _TVAppShellState extends State<TVAppShell> {
   /// （短剧库搜索框），在「我的/设置」tab 会落到不可见节点。
   void _applyContentEntry(int tab) {
     if (tab == 0) {
-      contentEntryFocusNode = _searchFocus;
-      _searchFocus.requestFocus();
+      // 「综合」下的内容区入口是悬浮搜索按钮；其他频道不显示搜索按钮，
+      // 这时改落到第一个热门标签，避免焦点滞留在导航栏。
+      if (_searchFocus.context != null) {
+        contentEntryFocusNode = _searchFocus;
+        _searchFocus.requestFocus();
+        return;
+      }
+      final firstTag = TVFocusRegistry.get('firstTag');
+      if (firstTag != null && firstTag.rect.width > 0) {
+        contentEntryFocusNode = firstTag;
+        firstTag.requestFocus();
+        return;
+      }
+      contentEntryFocusNode = _contentScope;
+      _contentScope.requestFocus();
       return;
     }
     final role = switch (tab) {
@@ -258,10 +274,40 @@ class _TVAppShellState extends State<TVAppShell> {
             child: Listener(
               // 鼠标：右键唤出导航，左键点击导航外区域收回
               onPointerDown: _handlePointerDown,
-              child: Stack(
+              // 推挤式布局：导航栏展开时把内容区整体向右推，收起时内容
+              // 回到原位，不再覆盖在内容之上。
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 内容区占满整个画幅：导航栏改成覆盖式抽屉，不再挤占宽度
-                  Positioned.fill(
+                  // 导航栏宽度 0 ↔ 200 的展开动画。内部用 OverflowBox 固定
+                  // 200 宽再裁剪，避免动画过程中导航项被压缩重排导致抖动。
+                  // ExcludeFocus 保证收起时其内部的焦点节点不会被 D-pad 选中。
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    width: _navVisible ? _navWidth : 0,
+                    child: ClipRect(
+                      child: OverflowBox(
+                        alignment: Alignment.centerLeft,
+                        minWidth: _navWidth,
+                        maxWidth: _navWidth,
+                        child: ExcludeFocus(
+                          excluding: !_navVisible,
+                          child: FocusTraversalGroup(
+                            key: navRegionKey,
+                            policy: TVFocusTraversalPolicy(),
+                            child: _TVNavigation(
+                              selected: _navIndex,
+                              onFocusItem: _previewNav,
+                              onActivateItem: _activateNav,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 内容区：随导航栏展开/收起被推挤或回位
+                  Expanded(
                     child: Focus(
                       focusNode: _contentScope,
                       canRequestFocus: false,
@@ -283,29 +329,6 @@ class _TVAppShellState extends State<TVAppShell> {
                             ),
                             TVSettingsScreen(),
                           ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  // 导航抽屉：默认完全移出屏幕左侧（不留图标、不占画幅），
-                  // 唤出时从左侧滑入并覆盖在内容之上。
-                  // ExcludeFocus 保证抽屉收起时其内部的焦点节点不会被 D-pad 选中。
-                  AnimatedPositioned(
-                    duration: const Duration(milliseconds: 240),
-                    curve: Curves.easeOutCubic,
-                    left: _navVisible ? 0 : -_navWidth,
-                    top: 0,
-                    bottom: 0,
-                    width: _navWidth,
-                    child: ExcludeFocus(
-                      excluding: !_navVisible,
-                      child: FocusTraversalGroup(
-                        key: navRegionKey,
-                        policy: TVFocusTraversalPolicy(),
-                        child: _TVNavigation(
-                          selected: _navIndex,
-                          onFocusItem: _previewNav,
-                          onActivateItem: _activateNav,
                         ),
                       ),
                     ),
