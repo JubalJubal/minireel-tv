@@ -39,6 +39,9 @@ class _TVAppShellState extends State<TVAppShell> {
   bool _openingPlayer = false;
   /// 导航抽屉是否滑出。默认 false：完全移出屏幕左侧，不留图标、不占画幅。
   bool _navVisible = false;
+  /// 短剧库是否停在顶部：由 [TVLibraryScreen] 的滚动位置驱动，
+  /// 让悬浮搜索按钮跟随顶部栏一起收起 / 出现。
+  final _libraryAtTop = ValueNotifier<bool>(true);
 
   /// 当前导航项对应的页面下标（IndexedStack 的 index）。
   int get _tab => _TVNavItem.all[_navIndex].page;
@@ -116,6 +119,7 @@ class _TVAppShellState extends State<TVAppShell> {
 
   @override
   void dispose() {
+    _libraryAtTop.dispose();
     FocusManager.instance.removeListener(_onPrimaryFocusChanged);
     onNavRevealRequested = null;
     navRegionVisible = false;
@@ -343,6 +347,7 @@ class _TVAppShellState extends State<TVAppShell> {
                                   TVLibraryScreen(
                                     onPlay: _play,
                                     channel: _channel,
+                                    atTopNotifier: _libraryAtTop,
                                   ),
                                   TVRankingsScreen(onPlay: _play),
                                   TVMineScreen(
@@ -367,42 +372,50 @@ class _TVAppShellState extends State<TVAppShell> {
                     Positioned(
                       left: 24,
                       top: 16,
-                      child: TVFocusable(
-                        key: const ValueKey('tv-search-button'),
-                        radius: 26,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => TVSearchScreen(onPlay: _play),
-                          ),
-                        ),
-                        focusNode: _searchFocus,
-                        semanticLabel: '搜索',
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: context.colors.primary,
-                            shape: BoxShape.circle,
-                            // 按钮本体就是主题色，加一圈白描边，
-                            // 否则同为强调色的焦点环完全看不出来
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: .85),
-                              width: 1.5,
+                      // 跟随库页滚动位置：往下滚时与顶部栏一起收起，
+                      // 滚回顶部再出现。
+                      // ExcludeFocus 保证收起时不会被 D-pad 选中。
+                      child: ValueListenableBuilder<bool>(
+                        valueListenable: _libraryAtTop,
+                        builder: (context, atTop, child) =>
+                            atTop ? child! : const SizedBox.shrink(),
+                        child: TVFocusable(
+                          key: const ValueKey('tv-search-button'),
+                          radius: 26,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => TVSearchScreen(onPlay: _play),
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: context.colors.primary.withValues(
-                                  alpha: .42,
-                                ),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
                           ),
-                          child: const Icon(
-                            Icons.search_rounded,
-                            size: 21,
-                            color: Colors.white,
+                          focusNode: _searchFocus,
+                          semanticLabel: '搜索',
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: context.colors.primary,
+                              shape: BoxShape.circle,
+                              // 按钮本体就是主题色，加一圈白描边，
+                              // 否则同为强调色的焦点环完全看不出来
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: .85),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: context.colors.primary.withValues(
+                                    alpha: .42,
+                                  ),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.search_rounded,
+                              size: 21,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),

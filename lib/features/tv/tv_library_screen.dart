@@ -20,10 +20,14 @@ class TVLibraryScreen extends StatefulWidget {
     super.key,
     required this.onPlay,
     this.channel,
+    this.atTopNotifier,
   });
   final void Function(Drama drama, [int? episode]) onPlay;
   /// 当前频道，由 TVAppShell 的侧边导航控制；null 表示「综合」。
   final DramaChannel? channel;
+  /// 列表是否停在顶部。由 TVAppShell 传入，用来同步外层那个悬浮搜索
+  /// 按钮的显隐：往下滚动时按钮与顶部栏一起让位给内容。
+  final ValueNotifier<bool>? atTopNotifier;
   @override
   State<TVLibraryScreen> createState() => _TVLibraryScreenState();
 }
@@ -95,17 +99,29 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
     _cachedPopularTags = popularTags.toList();
   }
 
+  /// 列表是否停在顶部。false 时顶部栏（筛选）与外层悬浮搜索按钮一起收起，
+  /// 把纵向空间让给卡片；滚回顶部再出现。
+  bool _atTop = true;
+
+  void _handleScroll() {
+    // 阈值取很小：只要离开顶部就收起，滚回顶部立刻恢复。
+    final atTop = !_scroll.hasClients || _scroll.offset <= 8;
+    if (atTop != _atTop) {
+      setState(() => _atTop = atTop);
+    }
+    widget.atTopNotifier?.value = atTop;
+    if (_scroll.position.extentAfter < 700) {
+      final repo = AppScope.read(context).repository;
+      if (repo.errors.isEmpty) {
+        unawaited(repo.loadMore(channel: widget.channel));
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _scroll.addListener(() {
-      if (_scroll.position.extentAfter < 700) {
-        final repo = AppScope.read(context).repository;
-        if (repo.errors.isEmpty) {
-          unawaited(repo.loadMore(channel: widget.channel));
-        }
-      }
-    });
+    _scroll.addListener(_handleScroll);
   }
 
   @override
@@ -125,69 +141,75 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
         _ensureItemsComputed(repo);
         final items = _cachedItems;
         final popularTags = _cachedPopularTags;
+        // 列表为空 / 加载中时始终显示顶部栏（用户需要「刷新剧库」入口），
+        // 否则跟随滚动位置收起，把纵向空间让给卡片。
+        final showHeader = _atTop || items.isEmpty;
         return Column(
           children: [
-            // 顶部栏：搜索 + 分类 + 筛选（独立焦点区，与瀑布流隔离）
-            // 顶部栏整体水平方向遍历（搜索/分类/标签都是横向排列）
-            FocusTraversalGroup(
-              policy: TVFocusTraversalPolicy(),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  border: Border(
-                    bottom: BorderSide(color: Theme.of(context).dividerColor),
-                  ),
-                ),
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        // 搜索按钮已上移到 TVAppShell 的屏幕级悬浮层
-                        // （固定在左上角，不随内容区推挤移动）。
-                        const Spacer(),
-                        // 热门标签行已移除，筛选入口常驻顶部右侧
-                        TVFocusable(
-                          radius: 20,
-                          focusRole: 'filter',
-                          onTap: () => _openFilters(popularTags.toList()),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.filter_list_rounded,
-                                  size: 18,
-                                  color: _filtered
-                                      ? context.colors.primary
-                                      : context.muted,
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  '筛选',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: _filtered
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
-                                    color: _filtered
-                                        ? context.colors.primary
-                                        : context.muted,
-                                  ),
-                                ),
-                              ],
+            // 顶部栏：筛选（独立焦点区，与网格隔离）。
+            // 用 AnimatedSize 让收起/展开呈现推挤效果，而不是突然消失。
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: showHeader
+                  ? FocusTraversalGroup(
+                      policy: TVFocusTraversalPolicy(),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          border: Border(
+                            bottom: BorderSide(
+                              color: Theme.of(context).dividerColor,
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+                        child: Row(
+                          children: [
+                            // 搜索按钮在 TVAppShell 的屏幕级悬浮层上
+                            // （固定在左上角，不随内容区推挤移动）。
+                            const Spacer(),
+                            TVFocusable(
+                              radius: 20,
+                              focusRole: 'filter',
+                              onTap: () => _openFilters(popularTags.toList()),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.filter_list_rounded,
+                                      size: 18,
+                                      color: _filtered
+                                          ? context.colors.primary
+                                          : context.muted,
+                                    ),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      '筛选',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: _filtered
+                                            ? FontWeight.w600
+                                            : FontWeight.w400,
+                                        color: _filtered
+                                            ? context.colors.primary
+                                            : context.muted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : const SizedBox(width: double.infinity, height: 0),
             ),
             if (repo.refreshing && repo.catalog.isNotEmpty)
               const LinearProgressIndicator(minHeight: 2),
