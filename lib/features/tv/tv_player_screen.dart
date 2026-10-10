@@ -1193,11 +1193,39 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
       onTap: onTap,
       child: SizedBox(
         width: dimension + 6,
-        // 预留一行文字的高度：聚焦时浮出提示不会顶动其它按钮
+        // 预留一行文字的高度：文字提示在按钮上方，聚焦时浮出不会顶动布局
         height: dimension + 24,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // 文字提示在按钮【上方】：放下面会把按钮往下推、离进度条越来越远
+            SizedBox(
+              height: 18,
+              child: Builder(
+                builder: (context) {
+                  final node = Focus.of(context);
+                  return ListenableBuilder(
+                    listenable: node,
+                    builder: (context, _) => AnimatedOpacity(
+                      opacity: node.hasFocus ? 1 : 0,
+                      duration: const Duration(milliseconds: 150),
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 10.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
             Container(
               width: dimension,
               height: dimension,
@@ -1210,30 +1238,6 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                 size: big ? 24 : 18,
                 color: onTap == null ? Colors.white24 : Colors.white,
               ),
-            ),
-            Builder(
-              builder: (context) {
-                final node = Focus.of(context);
-                return ListenableBuilder(
-                  listenable: node,
-                  builder: (context, _) => AnimatedOpacity(
-                    opacity: node.hasFocus ? 1 : 0,
-                    duration: const Duration(milliseconds: 150),
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 3),
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 10.5,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
             ),
           ],
         ),
