@@ -17,6 +17,7 @@ import 'support/fakes.dart';
 /// 右键就会「失效」、收不回菜单。
 void main() {
   const navDrawer = ValueKey('tv-nav-drawer');
+  const searchButton = ValueKey('tv-search-button');
 
   testWidgets('TV 侧边导航：左键唤出，切到其他菜单后右键仍能收回', (tester) async {
     tester.view.physicalSize = const Size(1920, 1080);
@@ -39,18 +40,36 @@ void main() {
 
     double drawerWidth() => tester.getSize(find.byKey(navDrawer)).width;
 
-    // 默认完全收起（不占画幅）
+    // 默认完全收起（不占画幅），且综合页显示悬浮搜索按钮
     expect(drawerWidth(), 0);
+    expect(find.byKey(searchButton), findsOneWidget, reason: '综合页应显示搜索按钮');
 
-    // 焦点在内容区最左（综合频道的悬浮搜索按钮）时按左键 → 唤出导航
+    // 焦点在内容区最左（搜索按钮）时按左键 → 唤出导航
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pumpAndSettle();
     expect(drawerWidth(), greaterThan(0), reason: '左键应能唤出导航抽屉');
 
-    // 下键切到「真人剧」：非综合频道，没有搜索按钮可当内容区入口
+    // 下键切到「真人剧」：频道类菜单，搜索按钮应隐藏
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pumpAndSettle();
     expect(drawerWidth(), greaterThan(0), reason: '预览其他菜单时抽屉保持展开');
+    expect(
+      find.byKey(searchButton),
+      findsNothing,
+      reason: '真人剧等频道菜单不应显示搜索按钮',
+    );
+
+    // 继续下键到「热播榜」：它不是频道筛选（channel 同样是 null），
+    // 但页面不是短剧库，同样不该出现搜索按钮
+    for (int i = 0; i < 4; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+    }
+    expect(
+      find.byKey(searchButton),
+      findsNothing,
+      reason: '热播榜/我的/设置等页面不应显示搜索按钮',
+    );
 
     // 右键必须能收回 —— 这里就是「其他菜单下失效」的回归点
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);

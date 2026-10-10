@@ -360,12 +360,15 @@ class _TVAppShellState extends State<TVAppShell> {
                   ),
                   // 悬浮搜索按钮：挂在屏幕级 Stack 上，固定在左上角，
                   // 不随内容区推挤移动（导航栏展开时它仍停在原位）。
-                  // 只在「综合」频道显示，切到其他频道时自动隐藏。
-                  if (_channel == null)
+                  // 只在短剧库的「综合」频道显示 —— 热播榜/我的/设置的
+                  // channel 同样是 null（它们不是频道筛选），所以必须连
+                  // 页面一起判断，否则这几个页面会错误地冒出搜索按钮。
+                  if (_tab == 0 && _channel == null)
                     Positioned(
                       left: 24,
                       top: 16,
                       child: TVFocusable(
+                        key: const ValueKey('tv-search-button'),
                         radius: 26,
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
