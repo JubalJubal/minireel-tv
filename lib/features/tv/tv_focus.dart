@@ -506,7 +506,19 @@ class TVFocusTraversalPolicy extends FocusTraversalPolicy {
   }
 
   @override
-  bool inDirection(FocusNode currentNode, TraversalDirection direction) {
+  bool inDirection(FocusNode currentNode, TraversalDirection direction) =>
+      _moveInDirection(currentNode, direction, signalShakeOnFail: true);
+
+  /// 滚动后顺带把焦点带到新卡片上用：移动失败时不发抖动信号，
+  /// 否则焦点卡片会无意义地抖一下（看起来就像「触顶抖动」）。
+  bool moveWithoutShake(FocusNode currentNode, TraversalDirection direction) =>
+      _moveInDirection(currentNode, direction, signalShakeOnFail: false);
+
+  bool _moveInDirection(
+    FocusNode currentNode,
+    TraversalDirection direction, {
+    required bool signalShakeOnFail,
+  }) {
     final next = _findInDirection(currentNode, direction);
     if (next != null) {
       next.requestFocus();
@@ -518,7 +530,7 @@ class TVFocusTraversalPolicy extends FocusTraversalPolicy {
       return true;
     }
     // 无法移动：发抖动信号，当前焦点节点会抖动反馈
-    tvShakeSignal.value++;
+    if (signalShakeOnFail) tvShakeSignal.value++;
     return false;
   }
 
@@ -883,7 +895,14 @@ bool _scrollThenRefocus(BuildContext context, TraversalDirection direction) {
   }
   final position = Scrollable.maybeOf(context)?.position;
   if (position == null) return false;
-  final delta = position.viewportDimension / 3;
+  // 滚动量至少覆盖一张卡片的高度：只滚 1/3 视口时，「上一行」往往还没
+  // 真正进入视口、也就不会被构建，下一帧照样找不到目标 —— 表现为焦点
+  // 原地不动、卡片抖一下。
+  final box = context.findRenderObject();
+  final cardHeight = box is RenderBox && box.hasSize
+      ? box.size.height
+      : position.viewportDimension / 2;
+  final delta = cardHeight + 24;
   final target =
       (position.pixels +
               (direction == TraversalDirection.up ? -delta : delta))
@@ -897,7 +916,8 @@ bool _scrollThenRefocus(BuildContext context, TraversalDirection direction) {
     if (current == null || nodeContext == null) return;
     final policy = FocusTraversalGroup.of(nodeContext);
     if (policy is TVFocusTraversalPolicy) {
-      policy.inDirection(current, direction);
+      // 这只是「滚动后顺带把焦点带过去」，失败也不该抖
+      policy.moveWithoutShake(current, direction);
     }
   });
   return true;
