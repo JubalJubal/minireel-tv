@@ -1,6 +1,7 @@
 import 'dart:math' show sin, pi;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/app_controller.dart';
@@ -513,14 +514,34 @@ class TVFocusTraversalPolicy extends FocusTraversalPolicy {
       // 用即时跳转而非动画：焦点本身已有 200ms 缩放/边框动画做反馈，
       // 滚动再动画会与网格重布局叠加导致掉帧（低端盒子尤甚）。
       final ctx = next.context;
-      if (ctx != null) {
-        Scrollable.ensureVisible(ctx, alignment: 0.1);
-      }
+      if (ctx != null) _ensureVisibleIfNeeded(ctx);
       return true;
     }
     // 无法移动：发抖动信号，当前焦点节点会抖动反馈
     tvShakeSignal.value++;
     return false;
+  }
+
+  /// 只在焦点真的离开视口时才滚动。
+  ///
+  /// 直接用 [Scrollable.ensureVisible]（alignment: 0.1）会把目标强制拉到
+  /// 视口 10% 处，哪怕它本来就在视口内 —— 向上移动焦点时列表会被一路
+  /// 「吸」向顶部，手感上就成了「按一下上键就回到顶部、没法逐行上滑」。
+  /// 这里先判断目标是否已完整可见，可见就完全不滚。
+  void _ensureVisibleIfNeeded(BuildContext ctx) {
+    final box = ctx.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return;
+    final viewport = RenderAbstractViewport.maybeOf(box);
+    final position = Scrollable.maybeOf(ctx)?.position;
+    if (viewport == null || position == null) return;
+    // getOffsetToReveal(.., 0) = 让该节点顶部对齐视口顶部所需的滚动位置
+    final target = viewport.getOffsetToReveal(box, 0).offset;
+    final visibleTop = position.pixels;
+    final visibleBottom = visibleTop + position.viewportDimension;
+    final alreadyVisible =
+        target >= visibleTop && target + box.size.height <= visibleBottom;
+    if (alreadyVisible) return;
+    Scrollable.ensureVisible(ctx, alignment: 0.1);
   }
 
   @override
@@ -841,11 +862,45 @@ bool handleDpadDirection(TraversalDirection direction) {
   } else if (current.focusInDirection(direction)) {
     return true;
   }
+  // 焦点已贴到视口边缘：懒加载网格里上下方的卡片还没构建，几何查找找不到
+  // 「再上一行」，不滚动的话手感就是「到边卡死」。这里改成滚动列表。
+  if (_scrollThenRefocus(context, direction)) return true;
   if (direction == TraversalDirection.left && onNavRevealRequested != null) {
     onNavRevealRequested!();
     return true;
   }
   return false;
+}
+
+/// 焦点到达视口边缘时按上下键：滚动列表，并在下一帧把焦点带到新卡片上。
+///
+/// 库页是懒加载网格（SliverGrid），视口外的卡片尚未构建，所以「上一行」
+/// 在几何查找的候选池里根本不存在。
+bool _scrollThenRefocus(BuildContext context, TraversalDirection direction) {
+  if (direction != TraversalDirection.up &&
+      direction != TraversalDirection.down) {
+    return false;
+  }
+  final position = Scrollable.maybeOf(context)?.position;
+  if (position == null) return false;
+  final delta = position.viewportDimension / 3;
+  final target =
+      (position.pixels +
+              (direction == TraversalDirection.up ? -delta : delta))
+          .clamp(position.minScrollExtent, position.maxScrollExtent);
+  if (target == position.pixels) return false;
+  position.jumpTo(target);
+  // 滚动后新的一行才会被构建，等这一帧结束再重新做一次方向查找。
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final current = FocusManager.instance.primaryFocus;
+    final nodeContext = current?.context;
+    if (current == null || nodeContext == null) return;
+    final policy = FocusTraversalGroup.of(nodeContext);
+    if (policy is TVFocusTraversalPolicy) {
+      policy.inDirection(current, direction);
+    }
+  });
+  return true;
 }
 
 /// 全局 D-pad 方向键拦截器：拦截真实遥控器/键盘方向键，
