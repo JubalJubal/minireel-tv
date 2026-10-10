@@ -548,8 +548,7 @@ class TVFocusTraversalPolicy extends FocusTraversalPolicy {
     // 后者只在短剧库 tab 可见，其它 tab 会落到 IndexedStack 隐藏节点。
     if (direction == TraversalDirection.right &&
         _isInNavRegion(currentNode) &&
-        contentEntryFocusNode != null &&
-        contentEntryFocusNode!.rect.width > 0) {
+        _isUsableEntry(contentEntryFocusNode)) {
       return contentEntryFocusNode;
     }
     final currentRole = TVFocusRegistry.roleOf(currentNode);
@@ -641,7 +640,12 @@ class TVFocusTraversalPolicy extends FocusTraversalPolicy {
     final root = FocusManager.instance.rootScope;
     // 找当前焦点所在的最近 FocusTraversalGroup scope。若非根 scope（如弹窗），
     // 只在该 scope 内查找候选，避免焦点跨出弹窗跑到背景页面。
-    final scope = _enclosingTraversalScope(currentNode) ?? root;
+    // 例外：从导航栏出发时必须改用根 scope —— 导航栏自带
+    // FocusTraversalGroup，限定在其中查找永远看不到内容区节点，
+    // 结果就是「在导航栏里按右键收不回菜单」。
+    final scope = _isInNavRegion(currentNode)
+        ? root
+        : (_enclosingTraversalScope(currentNode) ?? root);
     final candidates = _collectFocusableInScope(scope);
     candidates.remove(currentNode);
     final currentRect = currentNode.rect;
@@ -761,6 +765,20 @@ class TVFocusTraversalPolicy extends FocusTraversalPolicy {
     return null;
   }
 
+  /// 内容区入口节点当前是否可用。
+  ///
+  /// 三个条件缺一不可：
+  /// - 还挂在 widget 树上 —— defunct 元素的 context 仍非空，读 rect 会抛
+  ///   断言并中断整个按键处理，「右键能收回菜单」就会静默失效
+  /// - 真正可聚焦 —— 兜底用的内容区 scope 自身 canRequestFocus = false
+  /// - 有实际尺寸
+  bool _isUsableEntry(FocusNode? node) {
+    if (node == null || !node.canRequestFocus) return false;
+    final ctx = node.context;
+    if (ctx == null || !ctx.mounted) return false;
+    return node.rect.width > 0;
+  }
+
   bool _isInNavRegion(FocusNode node) {
     // 用导航栏实际占据的矩形判断，而不是硬编码 x∈[0,200]；同时先用
     // 可见性标志兜住 —— 导航栏收起时它仍占着一块布局（宽度动画到 0，
@@ -770,7 +788,13 @@ class TVFocusTraversalPolicy extends FocusTraversalPolicy {
     final navContext = navRegionKey.currentContext;
     if (navContext == null) return false;
     final navObject = navContext.findRenderObject();
-    if (navObject is! RenderBox || !navObject.hasSize) return false;
+    // 必须同时 attached + hasSize 才能安全读 global 坐标；只看 hasSize
+    // 会在布局/拆卸过程中抛断言，进而让整个按键处理中断（右键就此失效）。
+    if (navObject is! RenderBox ||
+        !navObject.attached ||
+        !navObject.hasSize) {
+      return false;
+    }
     final navRect = navObject.localToGlobal(Offset.zero) & navObject.size;
     final nodeRect = node.rect;
     return nodeRect.left >= navRect.left - 1 &&

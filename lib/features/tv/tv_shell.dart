@@ -15,6 +15,7 @@ import 'tv_mine_screen.dart';
 import 'tv_rankings_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_settings_screen.dart';
+import 'tv_search_screen.dart';
 import 'tv_update_dialog.dart';
 
 /// TV 版主界面。
@@ -172,6 +173,13 @@ class _TVAppShellState extends State<TVAppShell> {
   void _previewNav(int index) {
     if (!mounted || index == _navIndex) return;
     setState(() => _navIndex = index);
+    // 同步内容区入口节点：焦点即预览时也要更新它。否则在导航栏里按右键
+    // 会落到上一个页面的入口上——非「综合」频道没有搜索按钮时，失效的
+    // 入口节点会让右键收不回导航栏。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      contentEntryFocusNode = _resolveContentEntry(_tab);
+    });
   }
 
   /// 进入导航项对应页面：焦点移到内容区，抽屉随之收回。
@@ -196,25 +204,32 @@ class _TVAppShellState extends State<TVAppShell> {
   /// 用 [TVFocusRegistry] 角色查找而非 [findFirstFocus]，后者会遍历
   /// IndexedStack 所有子页（含隐藏 tab），返回 widget 树首个节点
   /// （短剧库搜索框），在「我的/设置」tab 会落到不可见节点。
-  void _applyContentEntry(int tab) {
+  /// 解析某个页面在内容区的首选焦点节点（只解析，不移动焦点）。
+  ///
+  /// - 短剧库：「综合」用悬浮搜索按钮；其他频道没有搜索按钮，用第一张卡片
+  /// - 热播榜：左侧首个榜单类型节点（角色 `rankingsTypeFirst`）
+  /// - 我的：segment「收藏」节点（角色 `mineEntry`）
+  /// - 设置：首个设置项节点（角色 `settingsEntry`）
+  ///
+  /// 用 [TVFocusRegistry] 角色查找而非 [findFirstFocus]，后者会遍历
+  /// IndexedStack 所有子页（含隐藏 tab），返回 widget 树首个节点
+  /// （短剧库搜索框），在「我的/设置」tab 会落到不可见节点。
+  FocusNode _resolveContentEntry(int tab) {
     if (tab == 0) {
-      // 「综合」下的内容区入口是悬浮搜索按钮；其他频道不显示搜索按钮，
-      // 这时改落到第一个热门标签，避免焦点滞留在导航栏。
-      if (_searchFocus.context != null) {
-        contentEntryFocusNode = _searchFocus;
-        _searchFocus.requestFocus();
-        return;
+      // 悬浮搜索按钮只在「综合」显示：切到其他频道后它对应的 Element 会
+      // 进入 defunct 状态，此时 context 仍非空但读 rect 会抛断言，导致
+      // 整个按键处理中断（右键收不回菜单）。必须用 mounted 判断。
+      final searchContext = _searchFocus.context;
+      if (searchContext != null && searchContext.mounted) {
+        return _searchFocus;
       }
-      // 没有搜索按钮（非综合频道）时，落到网格第一张卡片
       final firstCard = TVFocusRegistry.get('firstGridCard');
-      if (firstCard != null && firstCard.rect.width > 0) {
-        contentEntryFocusNode = firstCard;
-        firstCard.requestFocus();
-        return;
-      }
-      contentEntryFocusNode = _contentScope;
-      _contentScope.requestFocus();
-      return;
+      if (firstCard != null && firstCard.rect.width > 0) return firstCard;
+      // 没有卡片（加载中 / 空列表）时用顶部「筛选」兜底：它始终存在且
+      // 可聚焦，保证从导航栏按右键时焦点能真正落到内容区。
+      final filter = TVFocusRegistry.get('filter');
+      if (filter != null && filter.rect.width > 0) return filter;
+      return _contentScope;
     }
     final role = switch (tab) {
       1 => 'rankingsTypeFirst',
@@ -224,15 +239,17 @@ class _TVAppShellState extends State<TVAppShell> {
     };
     if (role != null) {
       final entry = TVFocusRegistry.get(role);
-      if (entry != null && entry.rect.width > 0) {
-        contentEntryFocusNode = entry;
-        entry.requestFocus();
-        return;
-      }
+      if (entry != null && entry.rect.width > 0) return entry;
     }
     // 兜底：直接请求内容区 scope
-    contentEntryFocusNode = _contentScope;
-    _contentScope.requestFocus();
+    return _contentScope;
+  }
+
+  /// 把焦点交回内容区（按 OK 进入页面、或收起导航栏时调用）。
+  void _applyContentEntry(int tab) {
+    final entry = _resolveContentEntry(tab);
+    contentEntryFocusNode = entry;
+    entry.requestFocus();
   }
 
   DateTime? _lastBackPressTime;
@@ -275,65 +292,117 @@ class _TVAppShellState extends State<TVAppShell> {
             child: Listener(
               // 鼠标：右键唤出导航，左键点击导航外区域收回
               onPointerDown: _handlePointerDown,
-              // 推挤式布局：导航栏展开时把内容区整体向右推，收起时内容
-              // 回到原位，不再覆盖在内容之上。
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              child: Stack(
                 children: [
-                  // 导航栏宽度 0 ↔ 200 的展开动画。内部用 OverflowBox 固定
-                  // 200 宽再裁剪，避免动画过程中导航项被压缩重排导致抖动。
-                  // ExcludeFocus 保证收起时其内部的焦点节点不会被 D-pad 选中。
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 240),
-                    curve: Curves.easeOutCubic,
-                    width: _navVisible ? _navWidth : 0,
-                    child: ClipRect(
-                      child: OverflowBox(
-                        alignment: Alignment.centerLeft,
-                        minWidth: _navWidth,
-                        maxWidth: _navWidth,
-                        child: ExcludeFocus(
-                          excluding: !_navVisible,
-                          child: FocusTraversalGroup(
-                            key: navRegionKey,
-                            policy: TVFocusTraversalPolicy(),
-                            child: _TVNavigation(
-                              selected: _navIndex,
-                              onFocusItem: _previewNav,
-                              onActivateItem: _activateNav,
+                  // 推挤式布局：导航栏展开时把内容区整体向右推，收起时内容
+                  // 回到原位，不再覆盖在内容之上。
+                  Positioned.fill(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // 导航栏宽度 0 ↔ 200 的展开动画。内部用 OverflowBox
+                        // 固定 200 宽再裁剪，避免动画中导航项被压扁重排。
+                        // ExcludeFocus 保证收起时其内部节点不会被 D-pad 选中。
+                        AnimatedContainer(
+                          key: const ValueKey('tv-nav-drawer'),
+                          duration: const Duration(milliseconds: 240),
+                          curve: Curves.easeOutCubic,
+                          width: _navVisible ? _navWidth : 0,
+                          child: ClipRect(
+                            child: OverflowBox(
+                              alignment: Alignment.centerLeft,
+                              minWidth: _navWidth,
+                              maxWidth: _navWidth,
+                              child: ExcludeFocus(
+                                excluding: !_navVisible,
+                                child: FocusTraversalGroup(
+                                  key: navRegionKey,
+                                  policy: TVFocusTraversalPolicy(),
+                                  child: _TVNavigation(
+                                    selected: _navIndex,
+                                    onFocusItem: _previewNav,
+                                    onActivateItem: _activateNav,
+                                  ),
+                                ),
+                              ),
                             ),
+                          ),
+                        ),
+                        // 内容区：随导航栏展开/收起被推挤或回位
+                        Expanded(
+                          child: Focus(
+                            focusNode: _contentScope,
+                            canRequestFocus: false,
+                            descendantsAreFocusable: true,
+                            child: FocusTraversalGroup(
+                              policy: TVFocusTraversalPolicy(),
+                              child: IndexedStack(
+                                index: _tab,
+                                children: [
+                                  TVLibraryScreen(
+                                    onPlay: _play,
+                                    channel: _channel,
+                                  ),
+                                  TVRankingsScreen(onPlay: _play),
+                                  TVMineScreen(
+                                    onPlay: _play,
+                                    onExplore: () => _activateNav(0),
+                                  ),
+                                  TVSettingsScreen(),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // 悬浮搜索按钮：挂在屏幕级 Stack 上，固定在左上角，
+                  // 不随内容区推挤移动（导航栏展开时它仍停在原位）。
+                  // 只在「综合」频道显示，切到其他频道时自动隐藏。
+                  if (_channel == null)
+                    Positioned(
+                      left: 24,
+                      top: 16,
+                      child: TVFocusable(
+                        radius: 26,
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => TVSearchScreen(onPlay: _play),
+                          ),
+                        ),
+                        focusNode: _searchFocus,
+                        semanticLabel: '搜索',
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: context.colors.primary,
+                            shape: BoxShape.circle,
+                            // 按钮本体就是主题色，加一圈白描边，
+                            // 否则同为强调色的焦点环完全看不出来
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: .85),
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: context.colors.primary.withValues(
+                                  alpha: .42,
+                                ),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.search_rounded,
+                            size: 21,
+                            color: Colors.white,
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  // 内容区：随导航栏展开/收起被推挤或回位
-                  Expanded(
-                    child: Focus(
-                      focusNode: _contentScope,
-                      canRequestFocus: false,
-                      descendantsAreFocusable: true,
-                      child: FocusTraversalGroup(
-                        policy: TVFocusTraversalPolicy(),
-                        child: IndexedStack(
-                          index: _tab,
-                          children: [
-                            TVLibraryScreen(
-                              onPlay: _play,
-                              searchFocus: _searchFocus,
-                              channel: _channel,
-                            ),
-                            TVRankingsScreen(onPlay: _play),
-                            TVMineScreen(
-                              onPlay: _play,
-                              onExplore: () => _activateNav(0),
-                            ),
-                            TVSettingsScreen(),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),

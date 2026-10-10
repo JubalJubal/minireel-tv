@@ -11,7 +11,6 @@ import '../shared/drama_metadata.dart';
 import '../detail/detail_sheet.dart';
 import '../shared/widgets.dart';
 import 'tv_focus.dart';
-import 'tv_search_screen.dart';
 
 /// TV 版短剧库页面。
 /// 复用 LibraryScreen 的数据逻辑（channel/tag/filter/order），
@@ -20,12 +19,9 @@ class TVLibraryScreen extends StatefulWidget {
   const TVLibraryScreen({
     super.key,
     required this.onPlay,
-    required this.searchFocus,
     this.channel,
   });
   final void Function(Drama drama, [int? episode]) onPlay;
-  /// 顶部搜索框的焦点节点，由 TVAppShell 统一持有。
-  final FocusNode searchFocus;
   /// 当前频道，由 TVAppShell 的侧边导航控制；null 表示「综合」。
   final DramaChannel? channel;
   @override
@@ -148,49 +144,8 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                   children: [
                     Row(
                       children: [
-                        // 圆形搜索按钮：只在「综合」频道显示，切到其他频道
-                        // （真人剧/漫剧/AI剧/动漫）时自动隐藏。
-                        // 焦点落到按钮上不进入，按 OK 才打开搜索页。
-                        if (widget.channel == null)
-                          TVFocusable(
-                            radius: 26,
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) =>
-                                    TVSearchScreen(onPlay: widget.onPlay),
-                              ),
-                            ),
-                            focusNode: widget.searchFocus,
-                            semanticLabel: '搜索',
-                            child: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: context.colors.primary,
-                                shape: BoxShape.circle,
-                                // 按钮本体就是主题色，加一圈白描边，
-                                // 否则同为强调色的焦点环完全看不出来
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: .85),
-                                  width: 1.5,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: context.colors.primary.withValues(
-                                      alpha: .42,
-                                    ),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(
-                                Icons.search_rounded,
-                                size: 21,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
+                        // 搜索按钮已上移到 TVAppShell 的屏幕级悬浮层
+                        // （固定在左上角，不随内容区推挤移动）。
                         const Spacer(),
                         // 热门标签行已移除，筛选入口常驻顶部右侧
                         TVFocusable(
