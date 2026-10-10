@@ -256,6 +256,15 @@ class _TVFocusableState extends State<TVFocusable>
 
   bool get _canActivate => widget.onTap != null || widget.onLongPress != null;
 
+  /// 鼠标 / 触摸点击时也把焦点移过来。
+  ///
+  /// 否则依赖焦点态的呈现（例如播放器按钮只在聚焦时浮出的文字提示）
+  /// 在点击路径下永远不会出现。
+  void _handleTap() {
+    if (_node.canRequestFocus) _node.requestFocus();
+    widget.onTap?.call();
+  }
+
   /// 从 context 取当前生效的遥控器按键映射。
   RemoteKeyMap _keyMap(BuildContext context) =>
       AppScope.read(context).remoteKeyMap;
@@ -307,7 +316,7 @@ class _TVFocusableState extends State<TVFocusable>
           final shakeT = _shakeController.value;
           final shakeX = sin(shakeT * pi * 6) * (1 - shakeT) * 8;
           return GestureDetector(
-            onTap: widget.onTap,
+            onTap: _handleTap,
             onLongPress: widget.onLongPress,
             child: Transform.translate(
               offset: Offset(shakeX, 0),

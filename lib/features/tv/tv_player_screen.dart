@@ -1051,7 +1051,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                   '上一集',
                   _session.canPrevious ? () => _changeEpisode(false) : null,
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 14),
                 _ctrlButton(
                   Icons.replay_rounded,
                   '快退 ${_app.preferences.seekStepSeconds}s',
@@ -1059,7 +1059,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                     Duration(seconds: -_app.preferences.seekStepSeconds),
                   ),
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 14),
                 _ctrlButton(
                   _session.playing
                       ? Icons.pause_rounded
@@ -1068,7 +1068,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                   _togglePlay,
                   big: true,
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 14),
                 _ctrlButton(
                   Icons.forward_rounded,
                   '快进 ${_app.preferences.seekStepSeconds}s',
@@ -1076,7 +1076,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                     Duration(seconds: _app.preferences.seekStepSeconds),
                   ),
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 14),
                 _ctrlButton(
                   Icons.skip_next_rounded,
                   '下一集',
@@ -1130,7 +1130,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                   '选集',
                   () => unawaited(_openEpisodes()),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 10),
                 _ctrlButton(
                   _app.isFavorite(_session.drama.id)
                       ? Icons.favorite_rounded
@@ -1138,31 +1138,31 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                   _app.isFavorite(_session.drama.id) ? '已收藏' : '收藏',
                   () => _app.toggleFavorite(_session.drama),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 10),
                 _ctrlButton(
                   Icons.speed_rounded,
                   '${_app.preferences.speed}x',
                   () => unawaited(_openSpeed()),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 10),
                 _ctrlButton(
                   Icons.high_quality_outlined,
                   _session.currentQuality,
                   () => unawaited(_openQuality()),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 10),
                 _ctrlButton(
                   Icons.aspect_ratio_rounded,
                   _fitLabel(_app.preferences.videoFitMode),
                   () => unawaited(_openFitMode()),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 10),
                 _ctrlButton(
                   Icons.volume_up_rounded,
                   _audioBoostLabel(_app.preferences.audioBoost),
                   () => unawaited(_openAudioBoost()),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 10),
                 _ctrlButton(Icons.logout_rounded, '退出', _exit),
               ],
             ),
@@ -1177,33 +1177,61 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     String label,
     VoidCallback? onTap, {
     bool big = false,
-  }) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      padding: EdgeInsets.all(big ? 18 : 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .08),
-        borderRadius: BorderRadius.circular(big ? 42 : 14),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: big ? 36 : 26,
-            color: onTap == null ? Colors.white24 : Colors.white,
-          ),
-          if (!big) ...[
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white60, fontSize: 11),
+  }) {
+    // 参考桌面播放器的风格：默认只有图标，聚焦后才在下方浮出文字提示。
+    final dimension = big ? 50.0 : 36.0;
+    return TVFocusable(
+      radius: dimension / 2 + 4,
+      onTap: onTap,
+      child: SizedBox(
+        width: dimension + 6,
+        // 预留一行文字的高度：聚焦时浮出提示不会顶动其它按钮
+        height: dimension + 24,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: dimension,
+              height: dimension,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: .08),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: big ? 24 : 18,
+                color: onTap == null ? Colors.white24 : Colors.white,
+              ),
+            ),
+            Builder(
+              builder: (context) {
+                final node = Focus.of(context);
+                return ListenableBuilder(
+                  listenable: node,
+                  builder: (context, _) => AnimatedOpacity(
+                    opacity: node.hasFocus ? 1 : 0,
+                    duration: const Duration(milliseconds: 150),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 10.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ],
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _glass({double radius = 28, required Widget child}) {
     final useGlass = _app.preferences.playerGlassEffect;
