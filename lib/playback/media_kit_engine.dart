@@ -157,6 +157,11 @@ final class _MediaKitPlayer implements PlaybackEngine {
         _ => 'mediacodec-copy',
       };
       await native.setProperty('hwdec', hwdec);
+      // 关闭解码器直出（direct rendering）。部分电视 SoC 的 GPU 驱动在硬解
+      // 首帧时会把尚未初始化的缓冲直接上屏，表现为每集开头 2-3 秒画面色块
+      // 分布不均、甚至大片白块，之后自行恢复。关掉 DR 后由 mpv 先拷一帧
+      // 再交给渲染器，可消除该现象，额外开销很小。
+      await native.setProperty('vd-lavc-dr', 'no');
       await native.setProperty('volume-max', '200');
 
       // 缓冲区大小动态调优

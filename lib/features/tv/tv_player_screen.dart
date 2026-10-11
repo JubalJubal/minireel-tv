@@ -248,11 +248,10 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
           _seekPreview != null) {
         return;
       }
-      // 焦点还在控制栏按钮上（用户正在选）→ 续一轮，不收起
-      if (_focusInControls) {
-        _restartHideTimer();
-        return;
-      }
+      // 这里不能再判断「焦点是否停在控制栏」：_showControls() 会主动把
+      // 焦点移到播放键，于是该判断恒为 true，定时器每轮都自我续期，
+      // 控制栏永远不会消失（用户实测的 bug）。用户一旦停止操作，定时器
+      // 本就重新计时，到点就该收起。
       setState(() => _controlsVisible = false);
     });
   }
@@ -753,10 +752,29 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
         Brightness.dark,
         _app.preferences.accentColorKey,
       ),
+      // 返回键必须由 PopScope 接管：Android 的系统返回会直接 pop 路由，
+      // Focus.onKeyEvent 收不到，因此 canPop 恒为 false。
+      // 否则控制栏开着时按返回会一步退回桌面（用户实测的 bug）。
       child: PopScope(
-        canPop: !_sheetOpen,
+        canPop: false,
         onPopInvokedWithResult: (didPop, _) {
-          if (didPop) _cleanup();
+          if (didPop) {
+            _cleanup();
+            return;
+          }
+          // 1) 浮层开着 → 先关浮层
+          if (_sheetOpen) {
+            setState(() => _sheetOpen = false);
+            return;
+          }
+          // 2) 控制栏可见 → 第一次返回只收起控制栏
+          if (_controlsVisible) {
+            _hideTimer?.cancel();
+            setState(() => _controlsVisible = false);
+            return;
+          }
+          // 3) 都收起了 → 退出播放，回到首页
+          _exit();
         },
         child: Scaffold(
           backgroundColor: Colors.black,
