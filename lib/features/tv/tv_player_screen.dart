@@ -1063,8 +1063,9 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 播放控制行：左对齐，右端显示当前时间
+              // 播放控制行：左对齐，右端显示当前时间（交叉轴居中）
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   _ctrlButton(
                     Icons.skip_previous_rounded,
@@ -1118,9 +1119,11 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                 ),
               ),
               const SizedBox(height: 12),
-              // 功能按钮行：左对齐，右端显示剩余 / 当前 / 总时长
+              // 功能按钮行：左对齐，右端显示剩余 / 当前 / 总时长。
+              // 交叉轴用 center：右侧文字与左侧按钮在高度上居中，
+              // 原来用 end 会让文字贴到按钮底边、看起来偏下。
               Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   _ctrlButton(
                     Icons.grid_view_rounded,
@@ -1187,13 +1190,13 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     style: const TextStyle(color: Colors.white60, fontSize: 12.5),
   );
 
-  /// 「周六 10 10月 23:03」：播放页右下角的当前时间。
+  /// 「10月11日 周日 00:53」：播放页右下角的当前时间。
   String get _clockLabel {
     final now = DateTime.now();
     const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     final hour = now.hour.toString().padLeft(2, '0');
     final minute = now.minute.toString().padLeft(2, '0');
-    return '${weekdays[now.weekday - 1]} ${now.day} ${now.month}月 $hour:$minute';
+    return '${now.month}月${now.day}日 ${weekdays[now.weekday - 1]} $hour:$minute';
   }
 
 
