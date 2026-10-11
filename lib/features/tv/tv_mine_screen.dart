@@ -4,6 +4,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../../app/app_controller.dart';
 import '../../app/theme.dart';
 import '../../domain/models/drama.dart';
+import '../detail/detail_sheet.dart';
 import '../shared/widgets.dart';
 import 'tv_focus.dart';
 
@@ -98,6 +99,9 @@ class _TVMineScreenState extends State<TVMineScreen> {
                           {drama.id},
                           _tab == 0,
                         ),
+                        // 菜单键：呼出详情面板（播放 / 收藏 / 选集）
+                        onMenu: () =>
+                            showDramaDetail(context, drama, widget.onPlay),
                         child: DramaCard(
                           drama: drama,
                           favorite: true,
@@ -138,6 +142,12 @@ class _TVMineScreenState extends State<TVMineScreen> {
                           app,
                           {record.drama.id},
                           false,
+                        ),
+                        // 菜单键：呼出详情面板（播放 / 收藏 / 选集）
+                        onMenu: () => showDramaDetail(
+                          context,
+                          record.drama,
+                          widget.onPlay,
                         ),
                         child: Material(
                           color: context.colors.surface,

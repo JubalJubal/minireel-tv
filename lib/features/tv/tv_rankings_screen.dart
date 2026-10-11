@@ -132,6 +132,13 @@ class _TVRankingsScreenState extends State<TVRankingsScreen> {
     unawaited(_load());
   }
 
+  /// 长按 OK 的快捷收藏：不进详情页，直接切换收藏状态并给出轻提示。
+  void _quickToggleFavorite(Drama drama) {
+    final app = AppScope.read(context);
+    final nowFavorite = app.toggleFavorite(drama);
+    showToast(context, nowFavorite ? '已收藏《${drama.title}》' : '已取消收藏');
+  }
+
   void _play(Drama drama, [int? episode]) {
     widget.onPlay(drama, episode);
   }
@@ -395,7 +402,9 @@ class _TVRankingsScreenState extends State<TVRankingsScreen> {
     return TVFocusable(
       radius: 14,
       onTap: () => _play(item.drama),
-      onLongPress: () => showDramaDetail(context, item.drama, _play),
+      // 长按 OK：不进详情，直接快捷收藏；菜单键：呼出详情面板
+      onLongPress: () => _quickToggleFavorite(item.drama),
+      onMenu: () => showDramaDetail(context, item.drama, _play),
       child: Material(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(14),

@@ -49,6 +49,10 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
   bool _awake = false;
   bool _closing = false;
   Timer? _hideTimer;
+  /// 长按 OK 呼出选集的计时状态。
+  Timer? _okTimer;
+  bool _okDown = false;
+  bool _okLongFired = false;
   // seek 预览
   Duration? _seekPreview;
   // 边界提示（没有上/下集）
@@ -665,6 +669,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     }
     WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
+    _okTimer?.cancel();
     _seekDebounce?.cancel();
     _edgeToastTimer?.cancel();
     _session.removeListener(_sessionChanged);
@@ -678,12 +683,26 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    final key = event.logicalKey;
+    final keyMap = _app.remoteKeyMap;
+    // 长按 OK 需要「抬起」事件来判定短按，这里只放行 OK 的 KeyUp；
+    // 其余按键的抬起一律忽略，避免方向键被重复触发一次导航。
+    if (event is KeyUpEvent) {
+      if (!keyMap.matches(RemoteAction.ok, key)) {
+        return KeyEventResult.ignored;
+      }
+      _okDown = false;
+      final fired = _okLongFired;
+      _okLongFired = false;
+      _okTimer?.cancel();
+      _okTimer = null;
+      if (!fired && !_sheetOpen) _togglePlay();
+      return KeyEventResult.handled;
+    }
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
     if (_sheetOpen) return KeyEventResult.ignored;
-    final key = event.logicalKey;
-    final keyMap = _app.remoteKeyMap;
     final step = Duration(seconds: _app.preferences.seekStepSeconds);
 
     // BACK / ESC → 若控制栏可见则先收起控制栏，已收起则退出播放
@@ -704,9 +723,16 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
       _showControls();
       return KeyEventResult.handled;
     }
-    // OK/ENTER/SPACE → 播放/暂停（同时确保控件可见）
+    // OK/ENTER/SPACE → 短按播放/暂停，长按（500ms）呼出选集
     if (keyMap.matches(RemoteAction.ok, key)) {
-      _togglePlay();
+      _okDown = true;
+      _okLongFired = false;
+      _okTimer?.cancel();
+      _okTimer = Timer(const Duration(milliseconds: 500), () {
+        if (!mounted || !_okDown) return;
+        _okLongFired = true;
+        unawaited(_openEpisodes());
+      });
       return KeyEventResult.handled;
     }
     // 方向键：控制栏收起时唤出并聚焦，展开后在按钮之间导航焦点。
