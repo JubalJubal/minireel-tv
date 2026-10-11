@@ -42,6 +42,8 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
   late final PlaybackSession _session;
   late final DeviceControls _device;
   bool _controlsVisible = true;
+  /// 真正要退出播放页时临时置位，放开 PopScope 的拦截。
+  bool _allowPop = false;
   bool _sheetOpen = false;
   bool _foreground = true;
   bool _awake = false;
@@ -645,7 +647,14 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
   void _exit() {
     if (_closing) return;
     _cleanup();
-    if (mounted) Navigator.of(context).maybePop();
+    if (!mounted) return;
+    // PopScope 的 canPop 为 false 时 maybePop() 会被判定为 doNotPop，
+    // 结果只执行了 _cleanup 却没退出，画面停在全黑的播放页。
+    // 先放开 PopScope，再在下一帧真正 pop。
+    setState(() => _allowPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).maybePop();
+    });
   }
 
   @override
@@ -756,7 +765,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
       // Focus.onKeyEvent 收不到，因此 canPop 恒为 false。
       // 否则控制栏开着时按返回会一步退回桌面（用户实测的 bug）。
       child: PopScope(
-        canPop: false,
+        canPop: _allowPop,
         onPopInvokedWithResult: (didPop, _) {
           if (didPop) {
             _cleanup();
