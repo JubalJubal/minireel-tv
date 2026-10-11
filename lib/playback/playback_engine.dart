@@ -59,4 +59,10 @@ abstract interface class PlaybackEngine {
 abstract interface class PreloadingPlaybackEngine {
   Future<void> preload(PlaybackSource source, {required String episodeId});
   void discardPreload();
+
+  /// 已缓冲就绪、可直接 promote 的分集 id（没有则为 null）。
+  ///
+  /// 播放会话用它判断切集能否走瞬时切换：能的话就不必先停下来等，
+  /// 也不用闪一层「正在加载短剧」。
+  String? get preloadedEpisodeId;
 }

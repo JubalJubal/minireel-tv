@@ -151,12 +151,24 @@ final class PlaybackSession extends ChangeNotifier {
     snapshot = const EngineSnapshot();
     options = null;
     error = null;
-    resolving = true;
-    loadingMessage = message;
     _completedHandled = false;
+    // 下一集若已在 standby 引擎里缓冲好，promote 是瞬时的：不必先停下来
+    // 等一次，也不要闪一层「正在加载短剧」——这两件事才是切换观感差的
+    // 主因（引擎本身早已就绪）。
+    final preloader = engine is PreloadingPlaybackEngine
+        ? engine as PreloadingPlaybackEngine
+        : null;
+    final promoted =
+        preloader != null &&
+        !fallbackOnly &&
+        startRoute == null &&
+        resume == Duration.zero &&
+        preloader.preloadedEpisodeId == episodes[index].id;
+    resolving = !promoted;
+    loadingMessage = promoted ? null : message;
     _notify();
     try {
-      await engine.stop();
+      if (!promoted) await engine.stop();
       if (!_current(generation)) return;
       final cached = startRoute == null && !fallbackOnly
           ? await _prefetch.take(episodes[index].id, token)
