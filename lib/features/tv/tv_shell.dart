@@ -260,10 +260,20 @@ class _TVAppShellState extends State<TVAppShell> {
   DateTime? _lastBackPressTime;
 
   void _handleBack() {
-    if (_tab != 0) {
+    // 1) 抽屉滑出时，返回键先收回抽屉，并把焦点交还内容区
+    if (_navVisible) {
+      _hideNav();
+      return;
+    }
+    // 2) 不在「综合」时先回到综合。
+    //    注意判断的是 _navIndex 而不是 _tab：真人剧 / 漫剧 / AI剧 / 动漫
+    //    与「综合」同属短剧库（page 都是 0），用 _tab 判断会漏掉它们，
+    //    导致在这些频道里按返回直接弹出「再按一次退出程序」。
+    if (_navIndex != 0) {
       _activateNav(0);
       return;
     }
+    // 3) 已在综合首页：两次返回退出程序
     final now = DateTime.now();
     if (_lastBackPressTime == null ||
         now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
@@ -291,6 +301,9 @@ class _TVAppShellState extends State<TVAppShell> {
         if (!didPop) _handleBack();
       },
       child: TVDpadInterceptor(
+        // 兜住「遥控器返回键以 KeyEvent 形式进来」这条路径，
+        // 与上面的 PopScope（系统返回）共同收敛到 _handleBack。
+        onBack: _handleBack,
         child: Scaffold(
           body: Container(
             color: Theme.of(context).scaffoldBackgroundColor,

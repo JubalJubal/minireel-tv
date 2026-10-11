@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' show sin, pi;
 
 import 'package:flutter/material.dart';
@@ -153,6 +154,7 @@ class TVFocusable extends StatefulWidget {
     required this.child,
     this.onTap,
     this.onLongPress,
+    this.onMenu,
     this.autofocus = false,
     this.radius = 16,
     this.scale = 1.04,
@@ -167,6 +169,9 @@ class TVFocusable extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
+  /// 遥控器菜单键（三条横）按下时回调，用于呼出该焦点的快捷菜单。
+  final VoidCallback? onMenu;
   final bool autofocus;
   final double radius;
   final double scale;
@@ -249,12 +254,23 @@ class _TVFocusableState extends State<TVFocusable>
     tvActivateSignal.removeListener(_onActivateSignal);
     if (widget.focusRole != null) TVFocusRegistry.unregister(widget.focusRole!, _node);
     _controller.dispose();
+    _okTimer?.cancel();
     _shakeController.dispose();
     if (_ownsNode) _node.dispose();
     super.dispose();
   }
 
-  bool get _canActivate => widget.onTap != null || widget.onLongPress != null;
+  /// 长按 OK 判定为「长按」的等待时长。
+  static const Duration _longPressDelay = Duration(milliseconds: 450);
+
+  Timer? _okTimer;
+  bool _okDown = false;
+  bool _longPressFired = false;
+
+  bool get _canActivate =>
+      widget.onTap != null ||
+      widget.onLongPress != null ||
+      widget.onMenu != null;
 
   /// 鼠标 / 触摸点击时也把焦点移过来。
   ///
@@ -270,14 +286,53 @@ class _TVFocusableState extends State<TVFocusable>
       AppScope.read(context).remoteKeyMap;
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
-    if (_keyMap(context).matches(RemoteAction.ok, key)) {
-      widget.onTap?.call();
+    // 菜单键（三条横）：呼出当前焦点的快捷菜单
+    if (event is KeyDownEvent &&
+        _keyMap(context).matches(RemoteAction.menu, key)) {
+      widget.onMenu?.call();
+      return widget.onMenu != null
+          ? KeyEventResult.handled
+          : KeyEventResult.ignored;
+    }
+    if (event is! KeyDownEvent && event is! KeyUpEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (!_keyMap(context).matches(RemoteAction.ok, key)) {
+      // 方向键交给 FocusTraversalPolicy.inDirection 处理（不拦截）
+      return KeyEventResult.ignored;
+    }
+    // 遥控器的 OK 只产生按键事件、不产生触摸事件，所以 GestureDetector 的
+    // onLongPress 永远不会触发。这里用「按下 → 抬起」自行计时来区分长短按：
+    //   短按 = onTap（播放 / 进入）
+    //   长按 = onLongPress（快速收藏等快捷操作）
+    if (event is KeyDownEvent) {
+      // 自动重复（KeyRepeatEvent）已在开头被过滤，这里一定是首次按下
+      if (widget.onLongPress == null) {
+        // 没有长按行为时保持原来的即时响应，避免无谓的按键延迟
+        widget.onTap?.call();
+        return KeyEventResult.handled;
+      }
+      _okDown = true;
+      _longPressFired = false;
+      _okTimer?.cancel();
+      _okTimer = Timer(_longPressDelay, () {
+        if (!mounted || !_okDown) return;
+        _longPressFired = true;
+        widget.onLongPress?.call();
+      });
       return KeyEventResult.handled;
     }
-    // 方向键交给 FocusTraversalPolicy.inDirection 处理（不拦截）
-    return KeyEventResult.ignored;
+    // KeyUpEvent
+    if (!_okDown) return KeyEventResult.handled;
+    _okDown = false;
+    final fired = _longPressFired;
+    _longPressFired = false;
+    _okTimer?.cancel();
+    _okTimer = null;
+    // 已经执行过长按动作，抬起时不再补一次短按
+    if (!fired) widget.onTap?.call();
+    return KeyEventResult.handled;
   }
 
   @override
@@ -939,13 +994,34 @@ bool _scrollThenRefocus(BuildContext context, TraversalDirection direction) {
 /// 用法：包在 TV 页面根部（TVAppShell 顶层）。
 /// 仅拦截方向键，其他键（OK/Enter/Back/媒体键）不受影响。
 class TVDpadInterceptor extends StatelessWidget {
-  const TVDpadInterceptor({super.key, required this.child});
+  const TVDpadInterceptor({
+    super.key,
+    required this.child,
+    this.onBack,
+    this.onMenu,
+  });
   final Widget child;
+
+  /// 遥控器返回 / 菜单键回调。
+  ///
+  /// 部分电视的遥控器返回键是以 KeyEvent 形式送进来的，而不是走 Android
+  /// 的系统返回（onBackPressed）—— 此时只挂 PopScope 会完全没反应。
+  /// 提供回调后这里兜住这条路径；不提供则保持原样交给页面自行处理。
+  final VoidCallback? onBack;
+  final VoidCallback? onMenu;
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event, BuildContext context) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
     final keyMap = AppScope.read(context).remoteKeyMap;
+    if (onBack != null && keyMap.matches(RemoteAction.back, key)) {
+      onBack!.call();
+      return KeyEventResult.handled;
+    }
+    if (onMenu != null && keyMap.matches(RemoteAction.menu, key)) {
+      onMenu!.call();
+      return KeyEventResult.handled;
+    }
     TraversalDirection? direction;
     if (keyMap.matches(RemoteAction.up, key)) {
       direction = TraversalDirection.up;

@@ -289,7 +289,10 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                                 radius: 16,
                                 focusRole: index == 0 ? 'firstGridCard' : null,
                                 onTap: () => widget.onPlay(drama),
-                                onLongPress: () => showDramaDetail(
+                                // 长按 OK：不进详情，直接切换收藏（遥控器快捷方式）
+                                onLongPress: () => _quickToggleFavorite(drama),
+                                // 菜单键：呼出该剧详情面板（播放 / 收藏 / 选集）
+                                onMenu: () => showDramaDetail(
                                   context,
                                   drama,
                                   widget.onPlay,
@@ -307,11 +310,8 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                                   // 取代默认的「集数 · 分类」。
                                   subtitle: _cardSubtitle(drama),
                                   onTap: () => widget.onPlay(drama),
-                                  onLongPress: () => showDramaDetail(
-                                    context,
-                                    drama,
-                                    widget.onPlay,
-                                  ),
+                                  // 与外层 TVFocusable 保持一致：长按 = 快捷收藏。
+                                  onLongPress: () => _quickToggleFavorite(drama),
                                   interactive: false,
                                 ),
                               );
@@ -447,6 +447,13 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
 
   /// 卡片副标题：优先显示题材标签（最多两个），没有标签时退回分类。
   /// 不再显示集数 —— 挑剧时题材比集数有用，位置让给标签。
+  /// 长按 OK 的快捷收藏：不进详情页，直接切换收藏状态并给出轻提示。
+  void _quickToggleFavorite(Drama drama) {
+    final app = AppScope.read(context);
+    final nowFavorite = app.toggleFavorite(drama);
+    showToast(context, nowFavorite ? '已收藏《${drama.title}》' : '已取消收藏');
+  }
+
   String _cardSubtitle(Drama drama) {
     // 频道标签（真人剧 / 漫剧 / AI剧 / 动漫）始终保留在最前，
     // 后面接题材标签（最多两个）；没有题材标签时退回分类。
