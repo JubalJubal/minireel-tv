@@ -133,11 +133,19 @@ class AppUpdateService {
     );
 
     // 检测本仓库自己发布的 Release（原来是上游作者的仓库）。
-    // 直连不通时回退到 ghproxy 镜像。
+    //
+    // 国内电视直连 api.github.com 基本超时，而 ghproxy.net 已失效（403），
+    // 之前只配这两个源，等于永远拿不到 Release、静默判为「无更新」。
+    // 改为可用的镜像优先、直连兜底。
     const repo = 'JubalJubal/minireel-tv';
-    final urls = [
-      'https://api.github.com/repos/$repo/releases/latest',
-      'https://ghproxy.net/https://api.github.com/repos/$repo/releases/latest',
+    const mirrors = [
+      'https://gh-proxy.com/',
+      'https://hk.gh-proxy.com/',
+    ];
+    final apiUrl = 'https://api.github.com/repos/$repo/releases/latest';
+    final urls = <String>[
+      for (final mirror in mirrors) '$mirror$apiUrl',
+      apiUrl,
     ];
 
     for (final url in urls) {
@@ -232,9 +240,14 @@ class AppUpdateService {
       } catch (_) {}
     }
 
-    final urlsToTry = [
+    // 与检查更新保持一致：镜像优先，直连兜底。
+    const mirrors = [
+      'https://gh-proxy.com/',
+      'https://hk.gh-proxy.com/',
+    ];
+    final urlsToTry = <String>[
+      for (final mirror in mirrors) '$mirror$downloadUrl',
       downloadUrl,
-      'https://ghproxy.net/$downloadUrl',
     ];
 
     DioException? lastError;
