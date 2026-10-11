@@ -1085,7 +1085,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                   _timeLabel(_clockLabel),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               // 进度条整行通铺，两端不再各放一个时间（时间统一收到右下）
               ClipRRect(
                 borderRadius: BorderRadius.circular(3),
@@ -1096,7 +1096,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                   valueColor: AlwaysStoppedAnimation(context.colors.primary),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               // 功能按钮行：左对齐，右端显示剩余 / 当前 / 总时长
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -1192,55 +1192,17 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
       radius: dimension / 2 + 4,
       focusRole: focusRole,
       onTap: onTap,
-      child: SizedBox(
-        width: dimension + 6,
-        // 预留一行文字的高度：文字提示在按钮上方，聚焦时浮出不会顶动布局
-        height: dimension + 24,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 文字提示在按钮【上方】：放下面会把按钮往下推、离进度条越来越远
-            SizedBox(
-              height: 18,
-              child: Builder(
-                builder: (context) {
-                  final node = Focus.of(context);
-                  return ListenableBuilder(
-                    listenable: node,
-                    builder: (context, _) => AnimatedOpacity(
-                      opacity: node.hasFocus ? 1 : 0,
-                      duration: const Duration(milliseconds: 150),
-                      child: Align(
-                        alignment: Alignment.bottomCenter,
-                        child: Text(
-                          label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 10.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            Container(
-              width: dimension,
-              height: dimension,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: .08),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                size: big ? 24 : 18,
-                color: onTap == null ? Colors.white24 : Colors.white,
-              ),
-            ),
-          ],
+      child: Container(
+        width: dimension,
+        height: dimension,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: .08),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          icon,
+          size: big ? 24 : 18,
+          color: onTap == null ? Colors.white24 : Colors.white,
         ),
       ),
     );
