@@ -69,14 +69,30 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     unawaited(_prepareDevice());
     unawaited(_session.initialize(initialEpisode: widget.initialEpisode));
     _showControls();
-    // 注册调试悬浮面板动作：播放页不用焦点导航，方向键直接 seek/切集。
+    // 注册调试悬浮面板动作：与控制栏的焦点导航共用同一套入口。
     tvPlayerDebugActions = TVPlayerDebugActions(
       onUp: () => _onRemoteDirection(RemoteAction.up),
       onDown: () => _onRemoteDirection(RemoteAction.down),
       onLeft: () => _onRemoteDirection(RemoteAction.left),
       onRight: () => _onRemoteDirection(RemoteAction.right),
-      onOk: _togglePlay,
+      onOk: _debugOk,
     );
+  }
+
+  /// 调试手柄 OK 键：与控制栏的焦点状态联动。
+  ///
+  /// 控制栏收起 → 唤出并聚焦播放键；焦点已在控制栏按钮上 → 激活该按钮
+  /// （走 TVFocusable 的全局激活信号）；其余情况 → 播放/暂停。
+  void _debugOk() {
+    if (!_controlsVisible) {
+      _showControls();
+      return;
+    }
+    if (_focusInControls) {
+      tvActivateSignal.value++;
+      return;
+    }
+    _togglePlay();
   }
 
   /// 调试悬浮面板方向键入口：与真实遥控器走同一套逻辑。
