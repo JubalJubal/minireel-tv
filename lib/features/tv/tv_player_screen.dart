@@ -79,41 +79,31 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     );
   }
 
-  /// 调试悬浮面板方向键入口：复用真实遥控器的方向动作逻辑。
-  /// 与 [_onKey] 里的处理一致——控件隐藏时先唤出，可见时执行 seek/切集。
+  /// 调试悬浮面板方向键入口：与真实遥控器走同一套逻辑。
   void _onRemoteDirection(RemoteAction action) {
     if (_sheetOpen) return;
-    final step = Duration(seconds: _app.preferences.seekStepSeconds);
-    switch (action) {
-      case RemoteAction.left:
-        if (!_controlsVisible) {
-          _showControls();
-          return;
-        }
-        _seekBy(-step);
-      case RemoteAction.right:
-        if (!_controlsVisible) {
-          _showControls();
-          return;
-        }
-        _seekBy(step);
-      case RemoteAction.up:
-        if (!_controlsVisible) {
-          _showControls();
-          return;
-        }
-        _changeEpisode(false);
-      case RemoteAction.down:
-        if (!_controlsVisible) {
-          _showControls();
-          return;
-        }
-        _changeEpisode(true);
-      case RemoteAction.ok:
-      case RemoteAction.back:
-      case RemoteAction.menu:
-        break;
+    final direction = switch (action) {
+      RemoteAction.left => TraversalDirection.left,
+      RemoteAction.right => TraversalDirection.right,
+      RemoteAction.up => TraversalDirection.up,
+      RemoteAction.down => TraversalDirection.down,
+      _ => null,
+    };
+    if (direction != null) _handleDirectionalKey(direction);
+  }
+
+  /// 方向键统一入口。
+  ///
+  /// 控制栏收起时，任意方向键 = 唤出控制栏并把焦点放到播放键上；
+  /// 控制栏展开后，方向键改为在按钮之间移动焦点 —— 播放/暂停、快进快退、
+  /// 上一集下一集，以及下面那一排功能按钮都靠它选择、OK 确认。
+  void _handleDirectionalKey(TraversalDirection direction) {
+    if (!_controlsVisible) {
+      _showControls();
+      return;
     }
+    handleDpadDirection(direction);
+    _restartHideTimer();
   }
 
   Future<void> _prepareDevice() async {
@@ -208,6 +198,24 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     _controlsVisible = true;
     if (mounted) setState(() {});
     _restartHideTimer();
+    // 焦点落到播放/暂停键：这样方向键立刻就能在控制栏里导航，
+    // 不用「先按一下唤出、再按一下才选中」。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _controlsVisible) {
+        TVFocusRegistry.get(_playToggleRole)?.requestFocus();
+      }
+    });
+  }
+
+  /// 播放/暂停按钮的焦点角色，唤出控制栏时用它定位焦点。
+  static const String _playToggleRole = 'ctrl:playToggle';
+
+  /// 焦点是否停在控制栏按钮上。停着的时候不做自动收起，
+  /// 否则用户正选着按钮就被收走了。
+  bool get _focusInControls {
+    final node = FocusManager.instance.primaryFocus;
+    if (node == null) return false;
+    return TVFocusRegistry.roleOf(node)?.startsWith('ctrl:') ?? false;
   }
 
   /// 重置并启动自动隐藏定时器（由用户交互或状态恢复触发）。
@@ -216,14 +224,20 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     final timeout = _app.preferences.controlsAutoHideSeconds;
     if (timeout <= 0) return; // 0 表示从不自动隐藏
     _hideTimer = Timer(Duration(seconds: timeout), () {
-      if (mounted &&
-          !_closing &&
-          _session.playing &&
-          !_session.buffering &&
-          !_sheetOpen &&
-          _seekPreview == null) {
-        setState(() => _controlsVisible = false);
+      if (!mounted ||
+          _closing ||
+          !_session.playing ||
+          _session.buffering ||
+          _sheetOpen ||
+          _seekPreview != null) {
+        return;
       }
+      // 焦点还在控制栏按钮上（用户正在选）→ 续一轮，不收起
+      if (_focusInControls) {
+        _restartHideTimer();
+        return;
+      }
+      setState(() => _controlsVisible = false);
     });
   }
 
@@ -671,40 +685,21 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
       _togglePlay();
       return KeyEventResult.handled;
     }
-    // 左 → 快退
+    // 方向键：控制栏收起时唤出并聚焦，展开后在按钮之间导航焦点。
     if (keyMap.matches(RemoteAction.left, key)) {
-      if (!_controlsVisible) {
-        _showControls();
-        return KeyEventResult.handled;
-      }
-      _seekBy(-step);
+      _handleDirectionalKey(TraversalDirection.left);
       return KeyEventResult.handled;
     }
-    // 右 → 快进
     if (keyMap.matches(RemoteAction.right, key)) {
-      if (!_controlsVisible) {
-        _showControls();
-        return KeyEventResult.handled;
-      }
-      _seekBy(step);
+      _handleDirectionalKey(TraversalDirection.right);
       return KeyEventResult.handled;
     }
-    // 上 → 上一集（到顶提示）
     if (keyMap.matches(RemoteAction.up, key)) {
-      if (!_controlsVisible) {
-        _showControls();
-        return KeyEventResult.handled;
-      }
-      _changeEpisode(false);
+      _handleDirectionalKey(TraversalDirection.up);
       return KeyEventResult.handled;
     }
-    // 下 → 下一集（到底提示）
     if (keyMap.matches(RemoteAction.down, key)) {
-      if (!_controlsVisible) {
-        _showControls();
-        return KeyEventResult.handled;
-      }
-      _changeEpisode(true);
+      _handleDirectionalKey(TraversalDirection.down);
       return KeyEventResult.handled;
     }
     // 媒体键
@@ -1070,6 +1065,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                     _session.playing ? '暂停' : '播放',
                     _togglePlay,
                     big: true,
+                    role: _playToggleRole,
                   ),
                   const SizedBox(width: 14),
                   _ctrlButton(
@@ -1185,11 +1181,16 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     String label,
     VoidCallback? onTap, {
     bool big = false,
+    String? role,
   }) {
+    // 默认按图标生成唯一焦点角色，用于判断「焦点是否还在控制栏里」。
+    // 播放/暂停的图标会切换，所以调用处显式传入固定 role。
+    final focusRole = role ?? 'ctrl:${icon.codePoint}';
     // 参考桌面播放器的风格：默认只有图标，聚焦后才在下方浮出文字提示。
     final dimension = big ? 50.0 : 36.0;
     return TVFocusable(
       radius: dimension / 2 + 4,
+      focusRole: focusRole,
       onTap: onTap,
       child: SizedBox(
         width: dimension + 6,
