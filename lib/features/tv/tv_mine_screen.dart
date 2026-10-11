@@ -136,6 +136,8 @@ class _TVMineScreenState extends State<TVMineScreen> {
                       padding: const EdgeInsets.only(bottom: 10),
                       child: TVFocusable(
                         radius: 16,
+                        // 整宽条目不做放大：会左右溢出列表边距并压住相邻项
+                        scale: 1,
                         focusRole: index == 0 ? 'mineFirstCard' : null,
                         onTap: () => widget.onPlay(record.drama),
                         onLongPress: () => _confirmRemove(

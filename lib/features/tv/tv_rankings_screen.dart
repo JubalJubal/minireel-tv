@@ -401,6 +401,8 @@ class _TVRankingsScreenState extends State<TVRankingsScreen> {
     final rank = item.rank;
     return TVFocusable(
       radius: 14,
+      // 榜单项是整宽卡片，放大同样会溢出列表边距、压住相邻项
+      scale: 1,
       onTap: () => _play(item.drama),
       // 长按 OK：不进详情，直接快捷收藏；菜单键：呼出详情面板
       onLongPress: () => _quickToggleFavorite(item.drama),

@@ -516,6 +516,8 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
               ),
             ),
             Container(
+              // 裁剪兜底：子项（例如开关的轻微放大）不会溢出圆角卡片
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: context.colors.surface,
                 borderRadius: BorderRadius.circular(16),
@@ -547,6 +549,9 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
     String? focusRole,
   }) => TVFocusable(
     radius: 16,
+    // 整宽条目不做放大：放大会让焦点行左右溢出卡片、把右侧箭头推到边缘，
+    // 还会压住上下的分割线。聚焦反馈交给红色边框 + 光晕即可。
+    scale: 1,
     onTap: onTap,
     focusRole: focusRole,
     child: Padding(
@@ -565,7 +570,7 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
             value,
             style: TextStyle(fontSize: 14, color: context.muted),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 10),
           Icon(
             Icons.chevron_right_rounded,
             size: 20,
