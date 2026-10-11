@@ -144,11 +144,17 @@ final class _MediaKitPlayer implements PlaybackEngine {
       await native.setProperty('cache', 'yes');
       await native.setProperty('cache-on-disk', 'no');
 
-      // 硬件解码策略：自动硬解(auto-safe) / 强制MediaCodec / 软解兼容(no)
+      // 硬件解码策略：软解兼容(no) / 强制 MediaCodec / 默认（拷贝回内存）。
+      //
+      // 默认不用 auto-safe：在 Android 上它常选到 `mediacodec`（非 copy），
+      // 解码帧直接输出到 Surface。部分电视 SoC（Cortex-A73 方案常见）在
+      // 每集开头 2-3 秒会渲染出未初始化的纹理 —— 画面色块分布不均、甚至
+      // 整片白块，之后自行恢复。`mediacodec-copy` 解码后拷回内存再交给
+      // mpv 渲染，画质稳定，而这档电视的解码性能足够，代价可以忽略。
       final hwdec = switch (_prefs.hardwareDecoding) {
         'no' => 'no',
         'mediacodec' => 'mediacodec',
-        _ => 'auto-safe',
+        _ => 'mediacodec-copy',
       };
       await native.setProperty('hwdec', hwdec);
       await native.setProperty('volume-max', '200');

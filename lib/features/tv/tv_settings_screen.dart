@@ -140,8 +140,8 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
       3.0: '3.0x 极速',
     };
     const hwdecOptions = {
-      'auto': '自动硬解（auto-safe，低发热推荐）',
-      'mediacodec': '强制硬件解码（MediaCodec）',
+      'auto': '硬件解码（兼容模式，推荐）',
+      'mediacodec': '强制硬解（直出 Surface，部分电视开头会花屏）',
       'no': '纯软解兼容（绿屏/黑屏时使用）',
     };
     const bufferSizeOptions = {
@@ -283,7 +283,7 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
                       context,
                       Icons.memory_rounded,
                       '硬件解码',
-                      hwdecOptions[prefs.hardwareDecoding] ?? '自动硬解',
+                      hwdecOptions[prefs.hardwareDecoding] ?? '硬件解码',
                       () => _pick(
                         context,
                         '硬件解码模式',

@@ -101,8 +101,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       3.0: '3.0x 极速',
     };
     const hwdecOptions = {
-      'auto': '自动硬解 (低功耗推荐)',
-      'mediacodec': '强制硬解 (MediaCodec)',
+      'auto': '硬件解码 (兼容模式，推荐)',
+      'mediacodec': '强制硬解 (直出 Surface，部分电视开头会花屏)',
       'no': '纯软解兼容',
     };
     const bufferSizeOptions = {
@@ -185,7 +185,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _row(
                   Icons.memory_rounded,
                   '硬件解码',
-                  value: hwdecOptions[prefs.hardwareDecoding] ?? '自动硬解',
+                  value: hwdecOptions[prefs.hardwareDecoding] ?? '硬件解码',
                   onTap: () async {
                     final value = await pickOption(
                       context,
