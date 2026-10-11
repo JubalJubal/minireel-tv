@@ -1011,7 +1011,13 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    child: _bottomControls(fraction),
+                    // 控制栏必须处在 TV 的几何遍历策略下：否则
+                    // FocusTraversalGroup.of() 拿到的是默认策略，方向键只能在
+                    // 同一行里横移，没法从上面那排跨到下面那排。
+                    child: FocusTraversalGroup(
+                      policy: TVFocusTraversalPolicy(),
+                      child: _bottomControls(fraction),
+                    ),
                   ),
                 ],
               ],
@@ -1064,7 +1070,6 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                         : Icons.play_arrow_rounded,
                     _session.playing ? '暂停' : '播放',
                     _togglePlay,
-                    big: true,
                     role: _playToggleRole,
                   ),
                   const SizedBox(width: 14),
