@@ -93,7 +93,10 @@ class AppUpdateService {
 
       final assets = (release['assets'] as List<dynamic>?) ?? [];
       final abi = await getDeviceAbi();
-      final asset = _selectAsset(assets, abi);
+      // tv 版与 phone 版是包名不同的两个应用（.tv 后缀），只能挑选与当前
+      // 安装形态一致的安装包，否则会装成另一个应用、更新也提示异常。
+      final isTv = info.packageName.endsWith('.tv');
+      final asset = selectAssetForDevice(assets, abi, isTv: isTv);
       if (asset == null) return null;
 
       final downloadUrl = (asset['browser_download_url'] as String?) ?? '';
@@ -188,29 +191,51 @@ class AppUpdateService {
   }
 
   /// 根据设备架构选择对应的 APK 资源。
-  static Map<String, dynamic>? _selectAsset(
+  ///
+  /// 发布产物同时包含 phone 与 tv 两个 flavor 时，两者文件名都会带有
+  /// `arm64-v8a`，仅按架构挑会选错。这里先按 flavor 过滤：tv 版文件名带
+  /// `-tv-`，phone 版不带；没有同形态的包就视为无可用更新。
+  static Map<String, dynamic>? selectAssetForDevice(
     List<dynamic> assets,
-    String abi,
-  ) {
-    final typedAssets = assets.whereType<Map<String, dynamic>>().toList();
-    final is64 = abi.contains('64') || abi.contains('arm64');
+    String abi, {
+    required bool isTv,
+  }) {
+    bool sameFlavor(String name) =>
+        isTv ? name.contains('-tv-') : !name.contains('-tv-');
 
-    if (is64) {
+    final typedAssets = assets
+        .whereType<Map<String, dynamic>>()
+        .where((a) => sameFlavor(a['name'] as String? ?? ''))
+        .toList();
+    if (typedAssets.isEmpty) return null;
+
+    String nameOf(Map<String, dynamic> a) => a['name'] as String? ?? '';
+
+    // 先精确命中设备 ABI（arm64-v8a / armeabi-v7a / x86_64）。
+    // 否则 x86_64 设备会因为含 "64" 被当成 64 位而拿到 arm64 包。
+    final exact = typedAssets.firstWhere(
+      (a) => nameOf(a).contains(abi),
+      orElse: () => const {},
+    );
+    if (exact.isNotEmpty) return exact;
+
+    // 兜底：64 位设备退到 arm64，其余退到 32 位 arm。
+    if (abi.contains('64') || abi.contains('arm64')) {
       final a64 = typedAssets.firstWhere(
-        (a) => (a['name'] as String? ?? '').contains('arm64-v8a'),
+        (a) => nameOf(a).contains('arm64-v8a'),
         orElse: () => const {},
       );
       if (a64.isNotEmpty) return a64;
     }
 
     final av7 = typedAssets.firstWhere(
-      (a) => (a['name'] as String? ?? '').contains('armeabi-v7a'),
+      (a) => nameOf(a).contains('armeabi-v7a'),
       orElse: () => const {},
     );
     if (av7.isNotEmpty) return av7;
 
     return typedAssets.firstWhere(
-      (a) => (a['name'] as String? ?? '').endsWith('.apk'),
+      (a) => nameOf(a).endsWith('.apk'),
       orElse: () => const {},
     );
   }

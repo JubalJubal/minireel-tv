@@ -10,6 +10,10 @@ import '../../local/app_store.dart';
 import 'hongguo_parser.dart';
 import 'hongguo_signer.dart';
 
+/// 红果播放接口对 X-Gorgon 系列签名敏感：携带签名会被静默拒绝
+/// （HTTP 200 但正文 0 字节）。其余接口必须带签名。
+const hongguoVideoModelPath = '/novel/player/video_model/v1/';
+
 final class HongguoAppClient {
   HongguoAppClient(this.config, this.transport, {this.store});
   final SourceConfig config;
@@ -89,7 +93,8 @@ final class HongguoAppClient {
         'Content-Type': 'application/json; charset=utf-8',
         'X-XS-From-Web': '0',
         'Sdk-Version': '2',
-        ...signHongguoRequest(uri, body, now),
+        if (path != hongguoVideoModelPath)
+          ...signHongguoRequest(uri, body, now),
       },
       cancelToken: cancelToken,
     );

@@ -99,18 +99,41 @@ final class HongguoWebFallback implements DramaSourceAdapter {
     }
     final info = objectMap(page['video_player_info']);
     final media = mediaUri(field(info, ['main_url']));
-    if (media == null) throw const AppException('网页暂未提供本集播放地址');
-    final seconds = double.tryParse(field(info, ['duration']));
-    return PlaybackSource(
-      uri: media,
-      kind: media.path.toLowerCase().contains('.m3u8')
-          ? PlaybackKind.hls
-          : PlaybackKind.direct,
-      headers: config.playbackHeaders(),
-      duration: seconds != null && seconds.isFinite && seconds > 0
-          ? Duration(milliseconds: (seconds * 1000).round())
-          : null,
-    );
+    if (media != null) {
+      final seconds = double.tryParse(field(info, ['duration']));
+      return PlaybackSource(
+        uri: media,
+        kind: media.path.toLowerCase().contains('.m3u8')
+            ? PlaybackKind.hls
+            : PlaybackKind.direct,
+        headers: config.playbackHeaders(),
+        duration: seconds != null && seconds.isFinite && seconds > 0
+            ? Duration(milliseconds: (seconds * 1000).round())
+            : null,
+      );
+    }
+    // 网页已改为 protectedPlayback：不再下发 video_player_info.main_url，
+    // 只对 publicVideoSeo 公布的公开视频提供 360p 直链。
+    // 地址规则见 hongguo 前端 player chunk：
+    //   "/video/public/".concat(itemId).concat("/360p.mp4")
+    final seo = objectMap(page['publicVideoSeo']);
+    if (seo['available'] == true &&
+        field(seo, ['seriesId']) == drama.sourceId &&
+        field(seo, ['itemId']) == episode.sourceEpisodeId) {
+      final seconds = double.tryParse(field(seo, ['durationSeconds']));
+      return PlaybackSource(
+        uri: config.baseUrl.resolve(
+          '/video/public/${episode.sourceEpisodeId}/360p.mp4',
+        ),
+        kind: PlaybackKind.direct,
+        headers: config.playbackHeaders(),
+        quality: '360P',
+        duration: seconds != null && seconds.isFinite && seconds > 0
+            ? Duration(milliseconds: (seconds * 1000).round())
+            : null,
+      );
+    }
+    throw const AppException('网页暂未提供本集播放地址');
   }
 
   Future<PlaybackOptions> _fromApi(
