@@ -9,6 +9,13 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # vendored 插件的 pigeon 定义与插件自测依赖 pigeon/mockito，
+    # 不在宿主应用的依赖里，分析器无需检查。
+    - packages/video_player_android/pigeons/**
+    - packages/video_player_android/test/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

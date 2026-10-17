@@ -1,9 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show BoxFit, Widget;
 
 import '../domain/models/playback_source.dart';
+import '../domain/models/preferences.dart';
 import 'playback_engine.dart';
+
+/// 可选能力：播放偏好（音量增强、缓冲档位等）变化时同步给底层解码器。
+abstract interface class PreferencesAwareEngine {
+  void updatePreferences(Preferences preferences);
+}
 
 final class _Slot {
   _Slot(this.engine, {this.source, this.episodeId});
@@ -52,6 +59,30 @@ class BufferedPlaybackEngine
     if (_active.episodeId == episodeId) return _active.engine;
     final standby = _standby;
     return standby?.episodeId == episodeId ? standby?.engine : null;
+  }
+
+  /// 当前活跃引擎（[episodeId] 为空）或指定预载分集的视频画面组件。
+  ///
+  /// 默认无解码表面（返回 null，调用方展示封面兜底）；具体引擎必须
+  /// 覆写。引擎 promote 后表面引用会变化，播放页需配合监听
+  /// [videoChanges] 重建。
+  Widget? videoView({String? episodeId, BoxFit fit = BoxFit.contain}) =>
+      null;
+
+  /// 活跃视频的真实宽高比；未知时返回 null。
+  double? get videoAspect => null;
+
+  /// 直接暂停活跃解码器（后台切换、关闭播放器等兜底路径使用，
+  /// 不经过会话的播放意图状态）。
+  Future<void> pauseActive() async {}
+
+  /// 播放偏好变化时同步给池内所有底层解码器。
+  void applyPreferences(Preferences preferences) {
+    for (final engine in [_active.engine, ?_standby?.engine]) {
+      if (engine case PreferencesAwareEngine aware) {
+        aware.updatePreferences(preferences);
+      }
+    }
   }
 
   void _activeChanged() {

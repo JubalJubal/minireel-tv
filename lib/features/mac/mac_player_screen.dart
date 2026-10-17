@@ -10,6 +10,7 @@ import '../../app/theme.dart';
 import '../../domain/models/drama.dart';
 import '../../domain/models/preferences.dart';
 import '../../playback/media_kit_engine.dart';
+import '../../playback/app_playback_engine.dart';
 import '../../playback/playback_engine.dart';
 import '../../playback/playback_session.dart';
 import '../../playback/device_controls.dart';
@@ -75,7 +76,7 @@ class _MacPlayerScreenState extends State<MacPlayerScreen>
   void initState() {
     super.initState();
     _app = AppScope.read(context);
-    _engine = widget.engine ?? MediaKitEngine(preferences: _app.preferences);
+    _engine = widget.engine ?? createPlaybackEngine(preferences: _app.preferences);
     _device = DeviceControls(_engine);
     _volume = _app.preferences.desktopVolume;
     if (_volume > 0) _unmutedVolume = _volume;

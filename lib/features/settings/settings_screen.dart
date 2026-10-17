@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -206,25 +208,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ]),
               _group('音画与解码性能', [
-                _row(
-                  Icons.memory_rounded,
-                  '硬件解码',
-                  value: hwdecOptions[prefs.hardwareDecoding] ?? '硬件解码',
-                  onTap: () async {
-                    final value = await pickOption(
-                      context,
-                      title: '硬件解码模式',
-                      subtitle: '遇到绿屏或画面异常时可尝试切换为软解兼容',
-                      value: prefs.hardwareDecoding,
-                      options: hwdecOptions,
-                    );
-                    if (value != null) {
-                      app.setPreferences(
-                        app.preferences.copyWith(hardwareDecoding: value),
+                // Android 用 ExoPlayer（MediaCodec 标准路径）硬解，没有
+                // libmpv 的软硬解开关；该选项仅对桌面端 mpv 引擎有意义。
+                if (!Platform.isAndroid)
+                  _row(
+                    Icons.memory_rounded,
+                    '硬件解码',
+                    value: hwdecOptions[prefs.hardwareDecoding] ?? '硬件解码',
+                    onTap: () async {
+                      final value = await pickOption(
+                        context,
+                        title: '硬件解码模式',
+                        subtitle: '遇到绿屏或画面异常时可尝试切换为软解兼容',
+                        value: prefs.hardwareDecoding,
+                        options: hwdecOptions,
                       );
-                    }
-                  },
-                ),
+                      if (value != null) {
+                        app.setPreferences(
+                          app.preferences.copyWith(hardwareDecoding: value),
+                        );
+                      }
+                    },
+                  ),
                 _row(
                   Icons.storage_rounded,
                   '播放缓冲容量',

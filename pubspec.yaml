@@ -1,7 +1,7 @@
 name: minireel
 description: MiniReel · 沉浸式短剧播放器，支持 Android 与 Windows。
 publish_to: none
-version: 0.3.4+18
+version: 0.3.5+19
 
 environment:
   sdk: ^3.11.0
@@ -26,6 +26,7 @@ dependencies:
   screen_retriever: ^0.2.2
   sqflite: ^2.4.2+1
   sqflite_common_ffi: ^2.4.0+3
+  video_player: ^2.14.0
   volume_controller: ^3.5.0
   wakelock_plus: ^1.7.0
   window_manager: ^0.5.2
@@ -37,6 +38,13 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   image: ^4.9.2
+
+# Android 播放不走 libmpv，改用 Media3/ExoPlayer（MediaCodec 标准路径），
+# 规避部分 Cortex-A73 电视 SoC 在 mpv 硬解首帧时的花屏。fork 内含
+# TextureView/PlatformView 输出切换与切集过渡的原生支持。
+dependency_overrides:
+  video_player_android:
+    path: packages/video_player_android
 
 flutter:
   uses-material-design: true

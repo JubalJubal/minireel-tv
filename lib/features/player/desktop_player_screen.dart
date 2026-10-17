@@ -11,6 +11,7 @@ import '../../desktop/window_chrome.dart';
 import '../../domain/models/drama.dart';
 import '../../domain/models/preferences.dart';
 import '../../playback/device_controls.dart';
+import '../../playback/app_playback_engine.dart';
 import '../../playback/media_kit_engine.dart';
 import '../../playback/playback_engine.dart';
 import '../../playback/playback_session.dart';
@@ -78,7 +79,7 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
     super.initState();
     _app = AppScope.read(context);
     _window = widget.window ?? DesktopWindow.instance;
-    _engine = widget.engine ?? MediaKitEngine(preferences: _app.preferences);
+    _engine = widget.engine ?? createPlaybackEngine(preferences: _app.preferences);
     _device = DeviceControls(_engine);
     _volume = _app.preferences.desktopVolume;
     if (_volume > 0) _unmutedVolume = _volume;

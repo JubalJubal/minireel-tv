@@ -4,15 +4,15 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/theme.dart';
 import '../../domain/models/drama.dart';
 import '../../domain/models/preferences.dart';
 import '../../domain/models/remote_key_map.dart';
+import '../../playback/app_playback_engine.dart';
+import '../../playback/buffered_playback_engine.dart';
 import '../../playback/device_controls.dart';
-import '../../playback/media_kit_engine.dart';
 import '../../playback/playback_session.dart';
 import '../shared/widgets.dart';
 import '../danmaku/danmaku_controller.dart';
@@ -40,7 +40,7 @@ class TVPlayerScreen extends StatefulWidget {
 class _TVPlayerScreenState extends State<TVPlayerScreen>
     with WidgetsBindingObserver {
   late final AppController _app;
-  late final MediaKitEngine _engine;
+  late final BufferedPlaybackEngine _engine;
   late final PlaybackSession _session;
   late final DeviceControls _device;
   bool _controlsVisible = true;
@@ -70,7 +70,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _app = AppScope.read(context);
-    _engine = MediaKitEngine(preferences: _app.preferences);
+    _engine = createPlaybackEngine(preferences: _app.preferences);
     _device = DeviceControls(_engine);
     _session = PlaybackSession(
       app: _app,
@@ -264,9 +264,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     } else {
       _session.boost(false);
       _session.hold('background');
-      try {
-        _engine.player.pause();
-      } catch (_) {}
+      unawaited(_engine.pauseActive());
     }
     _sessionChanged();
   }
@@ -360,14 +358,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
   }
 
   /// 弹幕层按视频真实宽高比居中，避免竖屏内容在电视上把弹幕甩到两侧黑边。
-  double get _danmakuAspectRatio {
-    final width = _engine.player.state.width;
-    final height = _engine.player.state.height;
-    if (width != null && height != null && width > 0 && height > 0) {
-      return width / height;
-    }
-    return 9 / 16;
-  }
+  double get _danmakuAspectRatio => _engine.videoAspect ?? 9 / 16;
 
   /// 遥控器左右键 seek
   void _seekBy(Duration delta) {
@@ -702,7 +693,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
       if (result != null) {
         final newPrefs = _app.preferences.copyWith(audioBoost: result);
         _app.setPreferences(newPrefs);
-        _engine.updatePreferences(newPrefs);
+        _engine.applyPreferences(newPrefs);
         unawaited(_engine.setVolume(_device.volume));
       }
     } finally {
@@ -720,10 +711,8 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     if (_cleanedUp) return;
     _cleanedUp = true;
     _closing = true;
-    try {
-      _engine.player.pause();
-      _engine.player.stop();
-    } catch (_) {}
+    unawaited(_engine.pauseActive());
+    unawaited(_engine.stop());
     unawaited(_session.close());
   }
 
@@ -904,23 +893,16 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                 // 否则 Video widget 会停留在已 retire 的旧 controller 上黑屏。
                 ValueListenableBuilder<int>(
                   valueListenable: _engine.videoChanges,
-                  builder: (context, _, _) {
-                    final controller = _engine.video;
-                    return Video(
-                      // key 随 controller 变化：media_kit 的 Video 在 didUpdateWidget
-                      // 里不重新绑定 controller（只在 initState 绑定一次），
-                      // 引擎 promote 后 controller 引用变了但 State 会复用旧
-                      // controller（已 dispose）→ 黑屏。用 ObjectKey 强制重建
-                      // State，新 State 绑定新 controller。
-                      key: ObjectKey(controller),
-                      controller: controller,
-                      fit: _getVideoBoxFit(_app.preferences.videoFitMode),
-                      controls: NoVideoControls,
-                      pauseUponEnteringBackgroundMode: false,
-                      resumeUponEnteringForegroundMode: false,
-                      wakelock: false,
-                    );
-                  },
+                  builder: (context, _, _) => IgnorePointer(
+                    // 引擎 promote 后表面引用会变化，videoView 的 key 随
+                    // controller 变化，不会复用已 dispose 的旧表面。
+                    child: _engine.videoView(
+                          fit: _getVideoBoxFit(
+                            _app.preferences.videoFitMode,
+                          ),
+                        ) ??
+                        const ColoredBox(color: Colors.black),
+                  ),
                 ),
                 // 弹幕层：视频之上、控制/手势层之下；电视端用内部 Ticker 推进。
                 if (_danmaku != null)

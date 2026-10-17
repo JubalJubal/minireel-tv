@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart' show WidgetsBinding;
+import 'package:flutter/widgets.dart' show BoxFit, ObjectKey, WidgetsBinding, Widget;
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -12,7 +12,7 @@ import '../domain/models/preferences.dart';
 import 'buffered_playback_engine.dart';
 import 'playback_engine.dart';
 import 'native_error_guard.dart';
-import 'cenc/cenc_playback_proxy.dart';
+import 'cenc/cenc_proxy_pool.dart';
 
 final class MediaKitEngine extends BufferedPlaybackEngine {
   MediaKitEngine({this.preferences})
@@ -26,10 +26,46 @@ final class MediaKitEngine extends BufferedPlaybackEngine {
   VideoController? videoForEpisode(String episodeId) =>
       (engineForEpisode(episodeId) as _MediaKitPlayer?)?.video;
 
+  @override
+  Widget? videoView({String? episodeId, BoxFit fit = BoxFit.contain}) {
+    final player = episodeId == null
+        ? activeEngine as _MediaKitPlayer
+        : engineForEpisode(episodeId) as _MediaKitPlayer?;
+    if (player == null) return null;
+    return Video(
+      key: ObjectKey(player.video),
+      controller: player.video,
+      fit: fit,
+      controls: NoVideoControls,
+      pauseUponEnteringBackgroundMode: false,
+      resumeUponEnteringForegroundMode: false,
+      wakelock: false,
+    );
+  }
+
   void updatePreferences(Preferences preferences) {
     if (activeEngine is _MediaKitPlayer) {
       (activeEngine as _MediaKitPlayer).updatePreferences(preferences);
     }
+  }
+
+  @override
+  double? get videoAspect {
+    final width = player.state.width;
+    final height = player.state.height;
+    if (width != null && height != null && width > 0 && height > 0) {
+      return width / height;
+    }
+    return null;
+  }
+
+  @override
+  Future<void> pauseActive() => player.pause();
+
+  @override
+  void applyPreferences(Preferences preferences) {
+    super.applyPreferences(preferences);
+    updatePreferences(preferences);
   }
 }
 
@@ -104,30 +140,11 @@ final class _MediaKitPlayer implements PlaybackEngine {
   bool _disposed = false;
   Uri? _proxyUrl;
 
-  static Future<CencPlaybackProxy>? _proxyFuture;
-
-  static Future<CencPlaybackProxy> _ensureProxy() async {
-    final existing = _proxyFuture;
-    if (existing != null) return existing;
-    final created = CencPlaybackProxy.start();
-    _proxyFuture = created;
-    try {
-      return await created;
-    } on Object {
-      _proxyFuture = null;
-      rethrow;
-    }
-  }
-
   void _releaseProxy() {
     final url = _proxyUrl;
     _proxyUrl = null;
     if (url == null) return;
-    final future = _proxyFuture;
-    if (future == null) return;
-    unawaited(
-      future.then<void>((proxy) => proxy.release(url), onError: (Object _) {}),
-    );
+    CencProxyPool.release(url);
   }
 
   void updatePreferences(Preferences preferences) {
@@ -175,7 +192,7 @@ final class _MediaKitPlayer implements PlaybackEngine {
         // 与参考实现一致：CENC 媒体先由本机代理解密成明文 MP4 再交给播放器，
         // 不依赖 libmpv 是否支持 cenc-aes-ctr 直解（不同 TV 固件差异很大）。
         try {
-          final proxy = await _ensureProxy();
+          final proxy = await CencProxyPool.acquire();
           final local = await proxy.open(source);
           if (!valid()) {
             proxy.release(local);

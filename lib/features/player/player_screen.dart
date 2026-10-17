@@ -4,14 +4,14 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/theme.dart';
 import '../../domain/models/drama.dart';
 import '../../domain/models/preferences.dart';
+import '../../playback/app_playback_engine.dart';
+import '../../playback/buffered_playback_engine.dart';
 import '../../playback/device_controls.dart';
-import '../../playback/media_kit_engine.dart';
 import '../../playback/playback_session.dart';
 import '../detail/detail_sheet.dart';
 import '../danmaku/danmaku_controller.dart';
@@ -36,7 +36,7 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen>
     with WidgetsBindingObserver {
   late final AppController _app;
-  late final MediaKitEngine _engine;
+  late final BufferedPlaybackEngine _engine;
   late final PlaybackSession _session;
   late final DeviceControls _device;
   late final PlayerGestureController _gestures;
@@ -67,7 +67,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _app = AppScope.read(context);
-    _engine = MediaKitEngine(preferences: _app.preferences);
+    _engine = createPlaybackEngine(preferences: _app.preferences);
     _device = DeviceControls(_engine);
     _session = PlaybackSession(app: _app, engine: _engine, drama: widget.drama);
     _hint = !_app.preferences.gestureHintSeen;
@@ -188,14 +188,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   /// 弹幕层按视频真实宽高比居中，避免竖屏/宽银幕内容时弹幕飞到黑边上。
-  double get _danmakuAspectRatio {
-    final width = _engine.player.state.width;
-    final height = _engine.player.state.height;
-    if (width != null && height != null && width > 0 && height > 0) {
-      return width / height;
-    }
-    return 9 / 16;
-  }
+  double get _danmakuAspectRatio => _engine.videoAspect ?? 9 / 16;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -239,23 +232,16 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (_app.preferences.haptics) unawaited(HapticFeedback.selectionClick());
   }
 
-  Widget _video(VideoController controller) => IgnorePointer(
-    child: Video(
-      key: ObjectKey(controller),
-      controller: controller,
-      fit: BoxFit.contain,
-      controls: NoVideoControls,
-      pauseUponEnteringBackgroundMode: false,
-      resumeUponEnteringForegroundMode: false,
-      wakelock: false,
-    ),
+  Widget _videoSurface({String? episodeId}) => IgnorePointer(
+    child: _engine.videoView(episodeId: episodeId) ??
+        const ColoredBox(color: Colors.black),
   );
 
   Widget _buildVideoSurface() => ValueListenableBuilder<int>(
     valueListenable: _engine.videoChanges,
     builder: (context, _, _) {
       if (!_verticalPaging || _session.episodes.isEmpty) {
-        return _video(_engine.video);
+        return _videoSurface();
       }
       return EpisodePager(
         index: _session.currentIndex,
@@ -272,15 +258,15 @@ class _PlayerScreenState extends State<PlayerScreen>
         onScrollingChanged: _pagingChanged,
         itemBuilder: (context, index) {
           final episode = _session.episodes[index];
-          final controller = _engine.videoForEpisode(episode.id);
+          final view = _engine.videoView(episodeId: episode.id);
           return RepaintBoundary(
             key: ValueKey(episode.id),
             child: Stack(
               fit: StackFit.expand,
               children: [
                 const ColoredBox(color: Colors.black),
-                if (controller != null)
-                  _video(controller)
+                if (view != null)
+                  view
                 else
                   Opacity(
                     opacity: .5,
