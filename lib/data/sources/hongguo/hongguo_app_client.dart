@@ -9,6 +9,7 @@ import '../../../core/errors/app_exception.dart';
 import '../../../core/network/app_http_client.dart';
 import '../../local/app_store.dart';
 import 'hongguo_parser.dart';
+import 'hongguo_comment_signer.dart';
 import 'hongguo_signer.dart';
 
 /// 红果播放接口对 X-Gorgon 系列签名敏感：携带签名会被静默拒绝
@@ -55,6 +56,7 @@ final class HongguoAppClient {
     String path,
     Map<String, dynamic> payload, {
     CancelToken? cancelToken,
+    bool comment = false,
   }) async {
     if (!enabled) throw const AppException('App 数据源未配置');
     cancelToken?.throwIfCancellationRequested();
@@ -90,18 +92,27 @@ final class HongguoAppClient {
       body,
       (uri) {
         debugPrint(
-          '[HongguoApp] POST $path signed=$signed '
-          'deviceId=${_deviceId.length}字 iid=${_installId.length}字',
+          '[HongguoApp] POST $path signed=${signed && !comment} '
+          'comment=$comment deviceId=${_deviceId.length}字 iid=${_installId.length}字',
         );
-        return {
+        final headers = <String, String>{
           ...config.appHeaders,
           'User-Agent': config.appUserAgent,
           'Accept': 'application/json',
           'Content-Type': 'application/json; charset=utf-8',
           'X-XS-From-Web': '0',
           'Sdk-Version': '2',
-          if (signed) ...signHongguoRequest(uri, body, now),
         };
+        if (comment) {
+          headers['Comment-Source'] = '601';
+          headers['Server-Channel'] = '1000';
+          headers.addAll(
+            signHongguoCommentRequest(uri, now, HongguoCommentNonce.random()),
+          );
+        } else if (signed) {
+          headers.addAll(signHongguoRequest(uri, body, now));
+        }
+        return headers;
       },
       cancelToken: cancelToken,
     );

@@ -15,6 +15,8 @@ import '../../playback/device_controls.dart';
 import '../../playback/media_kit_engine.dart';
 import '../../playback/playback_session.dart';
 import '../shared/widgets.dart';
+import '../danmaku/danmaku_controller.dart';
+import '../danmaku/danmaku_overlay.dart';
 import 'tv_focus.dart';
 
 /// TV 版播放器。
@@ -57,6 +59,10 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
   Duration? _seekPreview;
   // 边界提示（没有上/下集）
   String? _edgeToast;
+  DanmakuController? _danmaku;
+  String _danmakuEpisodeId = '';
+  bool _danmakuVisible = false;
+  int _danmakuItems = -1;
   Timer? _edgeToastTimer;
 
   @override
@@ -147,6 +153,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
 
   void _sessionChanged() {
     if (!mounted || _closing) return;
+    _syncDanmaku();
     final awake = _foreground &&
         (_session.playing || _session.buffering) &&
         !_sheetOpen;
@@ -159,6 +166,54 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     }
     _checkAutoSkip();
     setState(() {});
+  }
+
+  /// 把播放器状态推给弹幕控制器；切集时重置分页窗口。
+  void _syncDanmaku() {
+    final service = _app.danmaku;
+    final episode = _session.episode;
+    if (service == null || episode == null) return;
+    final controller = _danmaku ??= DanmakuController(
+      service: service,
+      seriesId: _session.drama.sourceId,
+      videoId: episode.sourceEpisodeId,
+      onChanged: () {
+        if (mounted && !_closing) setState(() {});
+      },
+    );
+    if (_danmakuEpisodeId != episode.id) {
+      _danmakuEpisodeId = episode.id;
+      controller.resetForEpisode(
+        seriesId: _session.drama.sourceId,
+        videoId: episode.sourceEpisodeId,
+      );
+    }
+    final prefs = _app.preferences;
+    controller
+      ..fontSize = prefs.danmakuFontSize
+      ..opacity = prefs.danmakuOpacity
+      ..areaRatio = prefs.danmakuAreaRatio
+      ..speedFactor = prefs.danmakuSpeedFactor
+      ..update(
+        position: _session.position,
+        duration: _session.duration,
+        playing: _session.playing,
+        speed: _session.rate,
+        enabled: prefs.danmakuEnabled,
+        foreground: _foreground && !_sheetOpen,
+      );
+    if (_danmakuVisible != controller.visible ||
+        _danmakuItems != controller.items.length) {
+      _danmakuVisible = controller.visible;
+      _danmakuItems = controller.items.length;
+      debugPrint(
+        '[Danmaku] visible=$_danmakuVisible status=${controller.status} '
+        'items=$_danmakuItems pos=${_session.position.inMilliseconds} '
+        'dur=${_session.duration.inMilliseconds} '
+        'prefs=on:${prefs.danmakuEnabled} size:${prefs.danmakuFontSize} '
+        'op:${prefs.danmakuOpacity} area:${prefs.danmakuAreaRatio}',
+      );
+    }
   }
 
   void _checkAutoSkip() {
@@ -294,6 +349,26 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     _showControls();
   }
 
+  /// 弹幕开关：与设置页共用同一偏好，播放中立即生效。
+  void _toggleDanmaku() {
+    _app.setPreferences(
+      _app.preferences.copyWith(
+        danmakuEnabled: !_app.preferences.danmakuEnabled,
+      ),
+    );
+    _showControls();
+  }
+
+  /// 弹幕层按视频真实宽高比居中，避免竖屏内容在电视上把弹幕甩到两侧黑边。
+  double get _danmakuAspectRatio {
+    final width = _engine.player.state.width;
+    final height = _engine.player.state.height;
+    if (width != null && height != null && width > 0 && height > 0) {
+      return width / height;
+    }
+    return 9 / 16;
+  }
+
   /// 遥控器左右键 seek
   void _seekBy(Duration delta) {
     if (_session.duration == Duration.zero) return;
@@ -307,7 +382,11 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     _seekDebounce?.cancel();
     _seekDebounce = Timer(const Duration(milliseconds: 800), () {
       if (_seekPreview != null && mounted) {
-        unawaited(_session.seek(_seekPreview!));
+        final target = _seekPreview!;
+        _danmaku?.beginSeek();
+        unawaited(
+          _session.seek(target).whenComplete(() => _danmaku?.endSeek(target)),
+        );
         _seekPreview = null;
         setState(() {});
         if (_controlsVisible) _restartHideTimer();
@@ -672,6 +751,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     _okTimer?.cancel();
     _seekDebounce?.cancel();
     _edgeToastTimer?.cancel();
+    _danmaku?.dispose();
     _session.removeListener(_sessionChanged);
     _session.dispose();
     unawaited(_device.dispose());
@@ -842,6 +922,15 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                     );
                   },
                 ),
+                // 弹幕层：视频之上、控制/手势层之下；电视端用内部 Ticker 推进。
+                if (_danmaku != null)
+                  Positioned.fill(
+                    child: DanmakuOverlay(
+                      controller: _danmaku!,
+                      aspectRatio: _danmakuAspectRatio,
+                      television: true,
+                    ),
+                  ),
                 // 画面任意区域点击：唤出或收起控制栏
                 Positioned.fill(
                   child: GestureDetector(
@@ -1182,6 +1271,14 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                     Icons.grid_view_rounded,
                     '选集',
                     () => unawaited(_openEpisodes()),
+                  ),
+                  const SizedBox(width: 10),
+                  _ctrlButton(
+                    _app.preferences.danmakuEnabled
+                        ? Icons.subtitles_rounded
+                        : Icons.subtitles_off_rounded,
+                    _app.preferences.danmakuEnabled ? '关闭弹幕' : '打开弹幕',
+                    _toggleDanmaku,
                   ),
                   const SizedBox(width: 10),
                   _ctrlButton(

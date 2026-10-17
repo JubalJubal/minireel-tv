@@ -9,6 +9,7 @@ import '../../domain/models/remote_key_map.dart';
 import '../shared/widgets.dart';
 import 'tv_focus.dart';
 import 'tv_remote_key_settings.dart';
+import 'tv_sources_screen.dart';
 import 'tv_update_dialog.dart';
 
 /// TV 版设置页。
@@ -138,6 +139,29 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
       1.5: '1.5x 倍速',
       2.0: '2.0x 倍速（默认）',
       3.0: '3.0x 极速',
+    };
+    final danmakuSpeedOptions = {
+      0.7: '慢',
+      1.0: '标准（推荐）',
+      1.4: '快',
+    };
+    final danmakuFontOptions = {
+      14.0: '小',
+      18.0: '标准（推荐）',
+      22.0: '大',
+      26.0: '特大',
+    };
+    final danmakuOpacityOptions = {
+      0.4: '40% · 淡',
+      0.6: '60%',
+      0.8: '80%（推荐）',
+      1.0: '100% · 不透明',
+    };
+    final danmakuAreaOptions = {
+      0.25: '25% · 少占画面',
+      0.4: '40%（推荐）',
+      0.55: '55%',
+      0.7: '70% · 满屏弹幕',
     };
     const hwdecOptions = {
       'auto': '硬件解码（兼容模式，推荐）',
@@ -421,6 +445,92 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
                         prefs.speed,
                         (v) => app.setPreferences(
                           prefs.copyWith(speed: v),
+                        ),
+                      ),
+                    ),
+                  ]),
+                  _group(context, '弹幕', [
+                    _switchRow(
+                      context,
+                      Icons.subtitles_outlined,
+                      '显示弹幕',
+                      '关闭后播放页不再加载和显示弹幕',
+                      prefs.danmakuEnabled,
+                      (v) => app.setPreferences(
+                        prefs.copyWith(danmakuEnabled: v),
+                      ),
+                    ),
+                    _navRow(
+                      context,
+                      Icons.speed_rounded,
+                      '弹幕速度',
+                      danmakuSpeedOptions[prefs.danmakuSpeedFactor] ?? '标准',
+                      () => _pick(
+                        context,
+                        '弹幕速度',
+                        danmakuSpeedOptions,
+                        prefs.danmakuSpeedFactor,
+                        (v) => app.setPreferences(
+                          prefs.copyWith(danmakuSpeedFactor: v),
+                        ),
+                      ),
+                    ),
+                    _navRow(
+                      context,
+                      Icons.format_size_rounded,
+                      '弹幕字号',
+                      '${prefs.danmakuFontSize.toInt()} 号 · '
+                          '${danmakuFontOptions[prefs.danmakuFontSize] ?? ''}',
+                      () => _pick(
+                        context,
+                        '弹幕字号',
+                        danmakuFontOptions,
+                        prefs.danmakuFontSize,
+                        (v) => app.setPreferences(
+                          prefs.copyWith(danmakuFontSize: v),
+                        ),
+                      ),
+                    ),
+                    _navRow(
+                      context,
+                      Icons.opacity_rounded,
+                      '弹幕透明度',
+                      danmakuOpacityOptions[prefs.danmakuOpacity] ?? '80%',
+                      () => _pick(
+                        context,
+                        '弹幕透明度',
+                        danmakuOpacityOptions,
+                        prefs.danmakuOpacity,
+                        (v) => app.setPreferences(
+                          prefs.copyWith(danmakuOpacity: v),
+                        ),
+                      ),
+                    ),
+                    _navRow(
+                      context,
+                      Icons.height_rounded,
+                      '占用屏幕高度',
+                      danmakuAreaOptions[prefs.danmakuAreaRatio] ?? '40%',
+                      () => _pick(
+                        context,
+                        '弹幕占用屏幕高度',
+                        danmakuAreaOptions,
+                        prefs.danmakuAreaRatio,
+                        (v) => app.setPreferences(
+                          prefs.copyWith(danmakuAreaRatio: v),
+                        ),
+                      ),
+                    ),
+                  ]),
+                  _group(context, '站源与线路', [
+                    _navRow(
+                      context,
+                      Icons.dns_outlined,
+                      '站源管理',
+                      '红果 · 线路与测速',
+                      () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const TVSourcesScreen(),
                         ),
                       ),
                     ),

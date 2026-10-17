@@ -13,6 +13,8 @@ import '../../playback/media_kit_engine.dart';
 import '../../playback/playback_engine.dart';
 import '../../playback/playback_session.dart';
 import '../../playback/device_controls.dart';
+import '../danmaku/danmaku_controller.dart';
+import '../danmaku/danmaku_overlay.dart';
 import '../player/desktop_player_input.dart';
 import '../shared/widgets.dart';
 
@@ -66,6 +68,8 @@ class _MacPlayerScreenState extends State<MacPlayerScreen>
   Timer? _hideTimer;
   Timer? _noticeTimer;
   Future<void>? _closeFuture;
+  DanmakuController? _danmaku;
+  String _danmakuEpisodeId = '';
 
   @override
   void initState() {
@@ -97,8 +101,54 @@ class _MacPlayerScreenState extends State<MacPlayerScreen>
       _wasPlaying = playing;
       _showControls();
     }
+    _syncDanmaku();
     _updateAwake();
     setState(() {});
+  }
+
+  /// 把播放器状态推给弹幕控制器；切集时重置分页窗口。
+  void _syncDanmaku() {
+    final service = _app.danmaku;
+    final episode = _session.episode;
+    if (service == null || episode == null) return;
+    final controller = _danmaku ??= DanmakuController(
+      service: service,
+      seriesId: _session.drama.sourceId,
+      videoId: episode.sourceEpisodeId,
+      onChanged: () {
+        if (mounted && !_closing) setState(() {});
+      },
+    );
+    if (_danmakuEpisodeId != episode.id) {
+      _danmakuEpisodeId = episode.id;
+      controller.resetForEpisode(
+        seriesId: _session.drama.sourceId,
+        videoId: episode.sourceEpisodeId,
+      );
+    }
+    final prefs = _app.preferences;
+    controller
+      ..fontSize = prefs.danmakuFontSize
+      ..opacity = prefs.danmakuOpacity
+      ..areaRatio = prefs.danmakuAreaRatio
+      ..speedFactor = prefs.danmakuSpeedFactor
+      ..update(
+        position: _session.position,
+        duration: _session.duration,
+        playing: _session.playing,
+        speed: _session.rate,
+        enabled: prefs.danmakuEnabled,
+        foreground: !_hidden,
+      );
+  }
+
+  void _toggleDanmaku() {
+    _app.setPreferences(
+      _app.preferences.copyWith(
+        danmakuEnabled: !_app.preferences.danmakuEnabled,
+      ),
+    );
+    _showControls();
   }
 
   void _preferencesChanged() {
@@ -109,6 +159,7 @@ class _MacPlayerScreenState extends State<MacPlayerScreen>
       _volume = volume;
       unawaited(_device.setVolume(volume));
     }
+    _syncDanmaku();
     setState(() {});
   }
 
@@ -188,6 +239,18 @@ class _MacPlayerScreenState extends State<MacPlayerScreen>
     }
   }
 
+  double get _aspectRatio {
+    final engine = _engine;
+    if (engine is MediaKitEngine) {
+      final width = engine.player.state.width;
+      final height = engine.player.state.height;
+      if (width != null && height != null && width > 0 && height > 0) {
+        return width / height;
+      }
+    }
+    return 9 / 16;
+  }
+
   void _command(DesktopPlayerCommand cmd, bool accelerated) {
     _focus.requestFocus();
     switch (cmd) {
@@ -214,6 +277,8 @@ class _MacPlayerScreenState extends State<MacPlayerScreen>
         _changeEpisode(true);
       case DesktopPlayerCommand.episodes:
         _openPanel(_panel == _MacPanel.episodes ? null : _MacPanel.episodes);
+      case DesktopPlayerCommand.danmaku:
+        _toggleDanmaku();
     }
   }
 
@@ -228,7 +293,12 @@ class _MacPlayerScreenState extends State<MacPlayerScreen>
     _keyboardSeek = next;
     _showNotice(seconds > 0 ? '快进 $seconds 秒' : '后退 ${-seconds} 秒');
     setState(() => _seekPreview = next);
-    await _session.seek(next);
+    _danmaku?.beginSeek();
+    try {
+      await _session.seek(next);
+    } finally {
+      _danmaku?.endSeek(next);
+    }
   }
 
   Future<void> _setVolume(double value) async {
@@ -381,7 +451,12 @@ class _MacPlayerScreenState extends State<MacPlayerScreen>
       milliseconds: (_session.duration.inMilliseconds * value).round(),
     );
     _keyboardSeek = null;
-    await _session.seek(next);
+    _danmaku?.beginSeek();
+    try {
+      await _session.seek(next);
+    } finally {
+      _danmaku?.endSeek(next);
+    }
     _session.release('scrub');
     setState(() => _seekPreview = null);
   }
@@ -399,6 +474,7 @@ class _MacPlayerScreenState extends State<MacPlayerScreen>
     _hideTimer?.cancel();
     _noticeTimer?.cancel();
     _app.removeListener(_preferencesChanged);
+    _danmaku?.dispose();
     _session.removeListener(_sessionChanged);
     unawaited(_closeSession());
     _session.dispose();
@@ -465,6 +541,14 @@ class _MacPlayerScreenState extends State<MacPlayerScreen>
                                 : _MacPanel.menu),
                         child: const SizedBox.expand(),
                       ),
+                      // 弹幕层
+                      if (_danmaku != null)
+                        Positioned.fill(
+                          child: DanmakuOverlay(
+                            controller: _danmaku!,
+                            aspectRatio: _aspectRatio,
+                          ),
+                        ),
                       // 加载指示
                       if (_session.showLoading)
                         IgnorePointer(
@@ -623,6 +707,8 @@ class _MacPlayerScreenState extends State<MacPlayerScreen>
                           onSeek: _onSeek,
                           onSeekEnd: _onSeekEnd,
                           onSeekCancel: _onSeekCancel,
+                          danmakuEnabled: _app.preferences.danmakuEnabled,
+                          onDanmaku: _toggleDanmaku,
                         ),
                       // 面板
                       if (_panel != null) _buildPanel(),
@@ -832,6 +918,13 @@ class _MacPlayerScreenState extends State<MacPlayerScreen>
                     }
                   : null,
             ),
+            _menuItem(
+              _app.preferences.danmakuEnabled
+                  ? Icons.subtitles_rounded
+                  : Icons.subtitles_off_rounded,
+              _app.preferences.danmakuEnabled ? '关闭弹幕' : '打开弹幕',
+              _toggleDanmaku,
+            ),
           ],
         ),
       ),
@@ -989,13 +1082,17 @@ class _MacPlayerBottomBar extends StatelessWidget {
     required this.onSeek,
     required this.onSeekEnd,
     required this.onSeekCancel,
+    this.danmakuEnabled = false,
+    this.onDanmaku,
   });
   final bool playing;
+  final bool danmakuEnabled;
   final Duration position, duration, buffer;
   final double volume, speed;
   final bool canPrevious, canNext;
   final VoidCallback onPlayPause, onPrevious, onNext, onMute, onEpisodes,
       onSpeed, onMenu, onFullScreen, onSeekCancel;
+  final VoidCallback? onDanmaku;
   final ValueChanged<double> onVolume;
   final ValueChanged<double>? onSeekStart, onSeek, onSeekEnd;
 
@@ -1134,6 +1231,14 @@ class _MacPlayerBottomBar extends StatelessWidget {
                       style: const TextStyle(fontSize: 12.5),
                     ),
                   ),
+                  if (onDanmaku != null)
+                    _MacPlayerIconButton(
+                      icon: danmakuEnabled
+                          ? Icons.subtitles_rounded
+                          : Icons.subtitles_off_rounded,
+                      tooltip: danmakuEnabled ? '关闭弹幕 · D' : '打开弹幕 · D',
+                      onTap: onDanmaku,
+                    ),
                   _MacPlayerIconButton(
                     icon: Icons.playlist_play_rounded,
                     tooltip: '选集 · E',

@@ -47,8 +47,11 @@ class DesktopPlayerControls extends StatelessWidget {
     required this.onSeek,
     required this.onSeekEnd,
     required this.onSeekCancel,
+    this.danmakuEnabled = false,
+    this.onDanmaku,
   });
   final bool playing, fullScreen;
+  final bool danmakuEnabled;
   final Duration position, duration, buffer;
   final double volume, speed;
   final VoidCallback onPlayPause,
@@ -58,7 +61,7 @@ class DesktopPlayerControls extends StatelessWidget {
       onMenu,
       onFullScreen,
       onSeekCancel;
-  final VoidCallback? onPrevious, onNext;
+  final VoidCallback? onPrevious, onNext, onDanmaku;
   final ValueChanged<double> onVolume;
   final ValueChanged<double>? onSeekStart, onSeek, onSeekEnd;
 
@@ -184,6 +187,15 @@ class DesktopPlayerControls extends StatelessWidget {
                         '${speed}x',
                         style: const TextStyle(fontSize: 13),
                       ),
+                    ),
+                  if (onDanmaku != null)
+                    desktopPlayerButton(
+                      key: const ValueKey('desktop-danmaku-toggle'),
+                      label: danmakuEnabled ? '关闭弹幕 · D' : '打开弹幕 · D',
+                      icon: danmakuEnabled
+                          ? Icons.subtitles_rounded
+                          : Icons.subtitles_off_rounded,
+                      onPressed: onDanmaku,
                     ),
                   desktopPlayerButton(
                     key: const ValueKey('desktop-episodes'),

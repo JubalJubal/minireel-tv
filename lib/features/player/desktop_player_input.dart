@@ -13,6 +13,7 @@ enum DesktopPlayerCommand {
   previous,
   next,
   episodes,
+  danmaku,
 }
 
 class DesktopPlayerInput extends StatelessWidget {
@@ -44,6 +45,7 @@ class DesktopPlayerInput extends StatelessWidget {
     LogicalKeyboardKey.pageUp: DesktopPlayerCommand.previous,
     LogicalKeyboardKey.pageDown: DesktopPlayerCommand.next,
     LogicalKeyboardKey.keyE: DesktopPlayerCommand.episodes,
+    LogicalKeyboardKey.keyD: DesktopPlayerCommand.danmaku,
   };
 
   @override
@@ -101,6 +103,7 @@ class DesktopShortcutGuide extends StatelessWidget {
     ('F / Enter', '进入 / 退出全屏'),
     ('PageUp / PageDown', '上一集 / 下一集'),
     ('E', '打开选集'),
+    ('D', '打开 / 关闭弹幕'),
     ('Esc', '关闭面板、退出全屏、小窗或播放'),
     ('单击 / 双击画面', '播放暂停 / 切换全屏'),
     ('右键画面', '打开播放菜单'),

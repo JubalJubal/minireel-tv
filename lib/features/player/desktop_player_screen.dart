@@ -14,6 +14,8 @@ import '../../playback/device_controls.dart';
 import '../../playback/media_kit_engine.dart';
 import '../../playback/playback_engine.dart';
 import '../../playback/playback_session.dart';
+import '../danmaku/danmaku_controller.dart';
+import '../danmaku/danmaku_overlay.dart';
 import '../shared/widgets.dart';
 import 'desktop_player_controls.dart';
 import 'desktop_player_input.dart';
@@ -68,6 +70,8 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
   Timer? _hideTimer;
   Timer? _noticeTimer;
   Future<void>? _closeFuture;
+  DanmakuController? _danmaku;
+  String _danmakuEpisodeId = '';
 
   @override
   void initState() {
@@ -102,8 +106,55 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
       _wasPlaying = playing;
       _showControls();
     }
+    _syncDanmaku();
     _updateAwake();
     setState(() {});
+  }
+
+  /// 把播放器状态推给弹幕控制器；切集时重置分页窗口。
+  void _syncDanmaku() {
+    final service = _app.danmaku;
+    final episode = _session.episode;
+    if (service == null || episode == null) return;
+    final controller = _danmaku ??= DanmakuController(
+      service: service,
+      seriesId: _session.drama.sourceId,
+      videoId: episode.sourceEpisodeId,
+      onChanged: () {
+        if (mounted && !_closing) setState(() {});
+      },
+    );
+    if (_danmakuEpisodeId != episode.id) {
+      _danmakuEpisodeId = episode.id;
+      controller.resetForEpisode(
+        seriesId: _session.drama.sourceId,
+        videoId: episode.sourceEpisodeId,
+      );
+    }
+    final prefs = _app.preferences;
+    controller
+      ..fontSize = prefs.danmakuFontSize
+      ..opacity = prefs.danmakuOpacity
+      ..areaRatio = prefs.danmakuAreaRatio
+      ..speedFactor = prefs.danmakuSpeedFactor
+      ..update(
+        position: _session.position,
+        duration: _session.duration,
+        playing: _session.playing,
+        speed: _session.rate,
+        enabled: prefs.danmakuEnabled,
+        foreground:
+            !_hidden && !_window.minimized && !_window.systemBlocked,
+      );
+  }
+
+  void _toggleDanmaku() {
+    _app.setPreferences(
+      _app.preferences.copyWith(
+        danmakuEnabled: !_app.preferences.danmakuEnabled,
+      ),
+    );
+    _showControls();
   }
 
   void _preferencesChanged() {
@@ -114,6 +165,7 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
       _volume = volume;
       unawaited(_device.setVolume(volume));
     }
+    _syncDanmaku();
     if (mounted) setState(() {});
   }
 
@@ -253,6 +305,8 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
         _changeEpisode(true);
       case DesktopPlayerCommand.episodes:
         _openPanel(_DesktopPanel.episodes);
+      case DesktopPlayerCommand.danmaku:
+        _toggleDanmaku();
     }
   }
 
@@ -267,10 +321,12 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
     _tell(
       '${seconds > 0 ? '前进' : '后退'} ${seconds.abs()} 秒 · ${formatTime(next)}',
     );
+    _danmaku?.beginSeek();
     try {
       await _session.seek(next);
     } finally {
       if (_keyboardSeek == next) _keyboardSeek = null;
+      _danmaku?.endSeek(next);
     }
   }
 
@@ -311,13 +367,14 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
   );
 
   Future<void> _seekEnd(double value) async {
+    final target = Duration(
+      milliseconds: (_session.duration.inMilliseconds * value).round(),
+    );
+    _danmaku?.beginSeek();
     try {
-      await _session.seek(
-        Duration(
-          milliseconds: (_session.duration.inMilliseconds * value).round(),
-        ),
-      );
+      await _session.seek(target);
     } finally {
+      _danmaku?.endSeek(target);
       _cancelSeek();
     }
   }
@@ -403,6 +460,7 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
     _app.removeListener(_preferencesChanged);
     _window.removeListener(_windowChanged);
     if (_window.onPlayerClose == _closeSession) _window.onPlayerClose = null;
+    _danmaku?.dispose();
     _session.removeListener(_sessionChanged);
     unawaited(_closeSession());
     _session.dispose();
@@ -470,6 +528,13 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
                         onSecondaryTap: () => _openPanel(_DesktopPanel.menu),
                         child: const SizedBox.expand(),
                       ),
+                      if (_danmaku != null)
+                        Positioned.fill(
+                          child: DanmakuOverlay(
+                            controller: _danmaku!,
+                            aspectRatio: _aspectRatio,
+                          ),
+                        ),
                       if (_session.showLoading)
                         IgnorePointer(
                           child: Center(
@@ -591,6 +656,8 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
                             onSeek: canSeek ? _seekChanged : null,
                             onSeekEnd: canSeek ? _seekEnd : null,
                             onSeekCancel: _cancelSeek,
+                            danmakuEnabled: _app.preferences.danmakuEnabled,
+                            onDanmaku: _toggleDanmaku,
                           ),
                         ),
                       ),
@@ -908,6 +975,13 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
           Icons.speed_rounded,
           '倍速 · ${_session.rate}x',
           () => _openPanel(_DesktopPanel.speed),
+        ),
+        _menuItem(
+          _app.preferences.danmakuEnabled
+              ? Icons.subtitles_rounded
+              : Icons.subtitles_off_rounded,
+          _app.preferences.danmakuEnabled ? '关闭弹幕' : '打开弹幕',
+          _toggleDanmaku,
         ),
         _menuItem(
           Icons.high_quality_outlined,

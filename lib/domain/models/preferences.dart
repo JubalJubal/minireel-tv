@@ -38,6 +38,11 @@ final class Preferences {
     this.tvColumns = 0,
     this.tvFocusSound = true,
     this.longPressSpeed = 2.0,
+    this.danmakuEnabled = true,
+    this.danmakuSpeedFactor = 1.0,
+    this.danmakuFontSize = 18,
+    this.danmakuOpacity = 0.9,
+    this.danmakuAreaRatio = 0.4,
   });
 
   final AppAppearance appearance;
@@ -83,6 +88,16 @@ final class Preferences {
   final bool tvFocusSound;
   /// 长按快进倍速：1.5, 2.0, 3.0
   final double longPressSpeed;
+  /// 弹幕开关（播放页控制栏也可临时切换）
+  final bool danmakuEnabled;
+  /// 弹幕速度系数：0.7 慢 / 1.0 标准 / 1.4 快
+  final double danmakuSpeedFactor;
+  /// 弹幕字号：14 小 / 18 标准 / 22 大 / 26 特大
+  final double danmakuFontSize;
+  /// 弹幕不透明度：0.4 / 0.6 / 0.8 / 1.0
+  final double danmakuOpacity;
+  /// 弹幕占用屏幕高度比例：0.25 / 0.4 / 0.55 / 0.7
+  final double danmakuAreaRatio;
 
   Preferences copyWith({
     AppAppearance? appearance,
@@ -113,6 +128,11 @@ final class Preferences {
     int? tvColumns,
     bool? tvFocusSound,
     double? longPressSpeed,
+    bool? danmakuEnabled,
+    double? danmakuSpeedFactor,
+    double? danmakuFontSize,
+    double? danmakuOpacity,
+    double? danmakuAreaRatio,
   }) => Preferences(
     appearance: appearance ?? this.appearance,
     speed: speed ?? this.speed,
@@ -142,6 +162,11 @@ final class Preferences {
     tvColumns: tvColumns ?? this.tvColumns,
     tvFocusSound: tvFocusSound ?? this.tvFocusSound,
     longPressSpeed: longPressSpeed ?? this.longPressSpeed,
+    danmakuEnabled: danmakuEnabled ?? this.danmakuEnabled,
+    danmakuSpeedFactor: danmakuSpeedFactor ?? this.danmakuSpeedFactor,
+    danmakuFontSize: danmakuFontSize ?? this.danmakuFontSize,
+    danmakuOpacity: danmakuOpacity ?? this.danmakuOpacity,
+    danmakuAreaRatio: danmakuAreaRatio ?? this.danmakuAreaRatio,
   );
 
   Map<String, dynamic> toJson() => {
@@ -173,6 +198,11 @@ final class Preferences {
     'tvColumns': tvColumns,
     'tvFocusSound': tvFocusSound,
     'longPressSpeed': longPressSpeed,
+    'danmakuEnabled': danmakuEnabled,
+    'danmakuSpeedFactor': danmakuSpeedFactor,
+    'danmakuFontSize': danmakuFontSize,
+    'danmakuOpacity': danmakuOpacity,
+    'danmakuAreaRatio': danmakuAreaRatio,
   };
 
   factory Preferences.fromJson(Map<String, dynamic> json) => Preferences(
@@ -233,5 +263,18 @@ final class Preferences {
     longPressSpeed: json['longPressSpeed'] is num
         ? (json['longPressSpeed'] as num).toDouble()
         : 2.0,
+    danmakuEnabled: json['danmakuEnabled'] != false,
+    danmakuSpeedFactor: json['danmakuSpeedFactor'] is num
+        ? (json['danmakuSpeedFactor'] as num).toDouble().clamp(0.5, 2.0)
+        : 1.0,
+    danmakuFontSize: json['danmakuFontSize'] is num
+        ? (json['danmakuFontSize'] as num).toDouble().clamp(12, 32)
+        : 18,
+    danmakuOpacity: json['danmakuOpacity'] is num
+        ? (json['danmakuOpacity'] as num).toDouble().clamp(0.2, 1.0)
+        : 0.9,
+    danmakuAreaRatio: json['danmakuAreaRatio'] is num
+        ? (json['danmakuAreaRatio'] as num).toDouble().clamp(0.15, 0.8)
+        : 0.4,
   );
 }

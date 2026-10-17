@@ -18,6 +18,7 @@ import 'core/services/diagnostic_log.dart';
 import 'data/local/sqlite_app_store.dart';
 import 'data/repositories/drama_repository.dart';
 import 'data/sources/hongguo/hongguo_adapter.dart';
+import 'data/sources/hongguo/hongguo_danmaku_service.dart';
 import 'data/sources/source_adapter.dart';
 import 'desktop/desktop_window.dart';
 import 'desktop/window_chrome.dart';
@@ -92,13 +93,20 @@ class _MiniReelBootstrapState extends State<MiniReelBootstrap> {
     // 路径会失败，诊断日志就永远不落盘。
     await initDiagnosticLog();
     try {
+      final adapter = config.enabled
+          ? HongguoAdapter(config, http, store: store)
+          : null;
       final repository = DramaRepository(
-        SourceRegistry([
-          if (config.enabled) HongguoAdapter(config, http, store: store),
-        ]),
+        SourceRegistry([if (adapter != null) adapter]),
         store,
       );
-      final app = AppController(store, repository);
+      final app = AppController(
+        store,
+        repository,
+        danmaku: adapter == null
+            ? null
+            : HongguoDanmakuService(adapter.appClient),
+      );
       await app.initialize();
       _app = app;
       if (Platform.isWindows) {

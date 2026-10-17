@@ -7,6 +7,7 @@ import '../../app/platform.dart';
 import '../../core/services/app_update_service.dart';
 import '../../domain/models/preferences.dart';
 import '../shared/widgets.dart';
+import '../sources/sources_screen.dart';
 import '../player/desktop_player_input.dart';
 import '../tv/tv_update_dialog.dart';
 
@@ -116,6 +117,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
       25: '清晰人声 (+25%)',
       50: '沉浸增强 (+50%)',
       100: '极限双倍 (+100%)',
+    };
+    final danmakuSpeedOptions = {
+      0.7: '慢',
+      1.0: '标准 (推荐)',
+      1.4: '快',
+    };
+    final danmakuFontOptions = {
+      14.0: '小',
+      18.0: '标准 (推荐)',
+      22.0: '大',
+      26.0: '特大',
+    };
+    final danmakuOpacityOptions = {
+      0.4: '40% · 淡',
+      0.6: '60%',
+      0.8: '80% (推荐)',
+      1.0: '100% · 不透明',
+    };
+    final danmakuAreaOptions = {
+      0.25: '25% · 少占画面',
+      0.4: '40% (推荐)',
+      0.55: '55%',
+      0.7: '70% · 满屏弹幕',
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -416,6 +440,90 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       app.setPreferences(prefs.copyWith(prefetchNextEpisode: v)),
                 ),
               ]),
+              _group('弹幕', [
+                _toggle(
+                  Icons.subtitles_outlined,
+                  '显示弹幕',
+                  prefs.danmakuEnabled,
+                  (v) => app.setPreferences(prefs.copyWith(danmakuEnabled: v)),
+                ),
+                _row(
+                  Icons.speed_rounded,
+                  '弹幕速度',
+                  value: danmakuSpeedOptions[prefs.danmakuSpeedFactor] ?? '标准',
+                  onTap: () async {
+                    final value = await pickOption(
+                      context,
+                      title: '弹幕速度',
+                      subtitle: '滚动弹幕从右向左飞过的速度',
+                      value: prefs.danmakuSpeedFactor,
+                      options: danmakuSpeedOptions,
+                    );
+                    if (value != null) {
+                      app.setPreferences(
+                        app.preferences.copyWith(danmakuSpeedFactor: value),
+                      );
+                    }
+                  },
+                ),
+                _row(
+                  Icons.format_size_rounded,
+                  '弹幕字号',
+                  value:
+                      '${prefs.danmakuFontSize.toInt()} 号 · '
+                      '${danmakuFontOptions[prefs.danmakuFontSize] ?? ''}',
+                  onTap: () async {
+                    final value = await pickOption(
+                      context,
+                      title: '弹幕字号',
+                      value: prefs.danmakuFontSize,
+                      options: danmakuFontOptions,
+                    );
+                    if (value != null) {
+                      app.setPreferences(
+                        app.preferences.copyWith(danmakuFontSize: value),
+                      );
+                    }
+                  },
+                ),
+                _row(
+                  Icons.opacity_rounded,
+                  '弹幕透明度',
+                  value: danmakuOpacityOptions[prefs.danmakuOpacity] ?? '80%',
+                  onTap: () async {
+                    final value = await pickOption(
+                      context,
+                      title: '弹幕透明度',
+                      value: prefs.danmakuOpacity,
+                      options: danmakuOpacityOptions,
+                    );
+                    if (value != null) {
+                      app.setPreferences(
+                        app.preferences.copyWith(danmakuOpacity: value),
+                      );
+                    }
+                  },
+                ),
+                _row(
+                  Icons.height_rounded,
+                  '占用屏幕高度',
+                  value: danmakuAreaOptions[prefs.danmakuAreaRatio] ?? '40%',
+                  onTap: () async {
+                    final value = await pickOption(
+                      context,
+                      title: '弹幕占用屏幕高度',
+                      subtitle: '弹幕最多铺满画面上方的这个比例',
+                      value: prefs.danmakuAreaRatio,
+                      options: danmakuAreaOptions,
+                    );
+                    if (value != null) {
+                      app.setPreferences(
+                        app.preferences.copyWith(danmakuAreaRatio: value),
+                      );
+                    }
+                  },
+                ),
+              ]),
               if (isWindowsDesktop)
                 _group('播放 · 桌面控制', [
                   _toggle(
@@ -496,6 +604,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ]),
+              _group('站源与线路', [
+                _row(
+                  Icons.dns_outlined,
+                  '站源管理',
+                  value: '红果 · 线路与测速',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SourcesScreen(),
+                    ),
+                  ),
+                ),
+              ]),
               _group('剧库与存储', [
                 ListenableBuilder(
                   listenable: app.repository,

@@ -68,22 +68,30 @@ final class HongguoWebFallback implements DramaSourceAdapter {
         !RegExp(r'^[0-9]{1,32}$').hasMatch(episode.sourceEpisodeId)) {
       throw const AppException('分集信息已失效，请刷新短剧后重试');
     }
-    if (fallbackOnly) return _fromApi(drama, episode, cancelToken);
+    if (fallbackOnly) return resolveApi(drama, episode, cancelToken: cancelToken);
     try {
-      return PlaybackOptions([await _fromWeb(drama, episode, cancelToken)]);
+      return PlaybackOptions([
+        await resolveWeb(drama, episode, cancelToken: cancelToken),
+      ]);
     } on AppException {
       // Only expected provider failures fall back. Cancellation/programming
       // errors are never converted into a second request.
       cancelToken?.throwIfCancellationRequested();
-      return _fromApi(drama, episode, cancelToken);
+      return resolveApi(drama, episode, cancelToken: cancelToken);
     }
   }
 
-  Future<PlaybackSource> _fromWeb(
+  /// 单条线路取流：网页播放页（`video_player_info.main_url` 或
+  /// `publicVideoSeo` 的 360P 公开直链）。
+  ///
+  /// 对外公开是为了让线路测速 / 多线路调度可以单独测试这条链路；
+  /// [resolvePlayback] 仍保持「网页失败自动回退备用接口」的既有行为。
+  Future<PlaybackSource> resolveWeb(
     Drama drama,
-    Episode episode,
-    CancelToken? token,
-  ) async {
+    Episode episode, {
+    CancelToken? cancelToken,
+  }) async {
+    final token = cancelToken;
     final uri = config.baseUrl.resolve(
       '/player/${drama.sourceId}/${episode.sourceEpisodeId}',
     );
@@ -136,11 +144,16 @@ final class HongguoWebFallback implements DramaSourceAdapter {
     throw const AppException('网页暂未提供本集播放地址');
   }
 
-  Future<PlaybackOptions> _fromApi(
+  /// 单条线路取流：备用解析接口（`playbackEndpoint`，v2 加密响应）。
+  ///
+  /// 对外公开是为了让线路测速 / 多线路调度可以单独测试这条链路；
+  /// [resolvePlayback] 仍保持既有回退顺序。
+  Future<PlaybackOptions> resolveApi(
     Drama drama,
-    Episode episode,
-    CancelToken? token,
-  ) async {
+    Episode episode, {
+    CancelToken? cancelToken,
+  }) async {
+    final token = cancelToken;
     final reference = base64.encode(
       utf8.encode(
         jsonEncode({

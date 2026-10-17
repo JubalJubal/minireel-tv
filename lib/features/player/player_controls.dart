@@ -86,6 +86,8 @@ class PortraitPlayerControls extends StatelessWidget {
     required this.onSeek,
     required this.onSeekEnd,
     required this.onSeekCancel,
+    this.danmakuEnabled = false,
+    this.onDanmaku,
   });
   final bool playing, right;
   final int episode, episodeCount;
@@ -93,6 +95,8 @@ class PortraitPlayerControls extends StatelessWidget {
   final double value;
   final VoidCallback onCollapse, onPlayPause, onLandscape, onLock, onSeekCancel;
   final VoidCallback? onPrevious, onNext;
+  final bool danmakuEnabled;
+  final VoidCallback? onDanmaku;
   final ValueChanged<double>? onSeekStart, onSeek, onSeekEnd;
 
   @override
@@ -192,6 +196,14 @@ class PortraitPlayerControls extends StatelessWidget {
             ),
             const SizedBox(height: 7),
             PlayerControlButton(
+              label: danmakuEnabled ? '关闭弹幕' : '打开弹幕',
+              icon: danmakuEnabled
+                  ? Icons.subtitles_rounded
+                  : Icons.subtitles_off_rounded,
+              onPressed: onDanmaku,
+            ),
+            const SizedBox(height: 7),
+            PlayerControlButton(
               label: '横屏播放',
               icon: Icons.stay_current_landscape_rounded,
               onPressed: onLandscape,
@@ -228,6 +240,8 @@ class LandscapePlayerControls extends StatelessWidget {
     required this.onSeek,
     required this.onSeekEnd,
     required this.onSeekCancel,
+    this.danmakuEnabled = false,
+    this.onDanmaku,
   });
   final bool playing;
   final Duration position, duration;
@@ -239,6 +253,8 @@ class LandscapePlayerControls extends StatelessWidget {
       onPortrait,
       onLock,
       onSeekCancel;
+  final bool danmakuEnabled;
+  final VoidCallback? onDanmaku;
   final ValueChanged<double>? onSeekStart, onSeek, onSeekEnd;
 
   @override
@@ -313,6 +329,14 @@ class LandscapePlayerControls extends StatelessWidget {
                 child: Text('${speed}x'),
               ),
               const Spacer(),
+              PlayerControlButton(
+                label: danmakuEnabled ? '关闭弹幕' : '打开弹幕',
+                icon: danmakuEnabled
+                    ? Icons.subtitles_rounded
+                    : Icons.subtitles_off_rounded,
+                onPressed: onDanmaku,
+              ),
+              const SizedBox(width: 9),
               PlayerControlButton(
                 label: '锁定屏幕',
                 icon: Icons.lock_outline_rounded,

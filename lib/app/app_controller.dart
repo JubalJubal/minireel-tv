@@ -4,15 +4,18 @@ import 'package:flutter/material.dart';
 
 import '../data/local/app_store.dart';
 import '../data/repositories/drama_repository.dart';
+import '../data/sources/hongguo/hongguo_danmaku_service.dart';
 import '../domain/models/drama.dart';
 import '../domain/models/preferences.dart';
 import '../domain/models/remote_key_map.dart';
 import '../domain/models/watch_record.dart';
 
 final class AppController extends ChangeNotifier {
-  AppController(this.store, this.repository);
+  AppController(this.store, this.repository, {this.danmaku});
   final AppStore store;
   final DramaRepository repository;
+  /// 弹幕数据源（当前只有红果提供弹幕；null 表示不可用）。
+  final HongguoDanmakuService? danmaku;
 
   Preferences preferences = const Preferences();
   /// 当前生效的遥控器按键映射（自定义优先，否则默认）。

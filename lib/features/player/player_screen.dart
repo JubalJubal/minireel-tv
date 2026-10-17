@@ -14,6 +14,8 @@ import '../../playback/device_controls.dart';
 import '../../playback/media_kit_engine.dart';
 import '../../playback/playback_session.dart';
 import '../detail/detail_sheet.dart';
+import '../danmaku/danmaku_controller.dart';
+import '../danmaku/danmaku_overlay.dart';
 import '../settings/settings_screen.dart';
 import '../shared/widgets.dart';
 import 'gesture_controller.dart';
@@ -56,6 +58,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   Timer? _topTimer;
   Timer? _railTimer;
   Timer? _messageTimer;
+  DanmakuController? _danmaku;
+  String _danmakuEpisodeId = '';
+  bool _danmakuVisible = false;
 
   @override
   void initState() {
@@ -84,7 +89,12 @@ class _PlayerScreenState extends State<PlayerScreen>
       },
       onMenu: () => unawaited(_openPanel(_Panel.menu)),
       onBoost: _session.boost,
-      onSeek: (target) => unawaited(_session.seek(target)),
+      onSeek: (target) {
+        _danmaku?.beginSeek();
+        unawaited(
+          _session.seek(target).whenComplete(() => _danmaku?.endSeek(target)),
+        );
+      },
       onScrubState: (active) =>
           active ? _session.hold('scrub') : _session.release('scrub'),
       onHud: _showHud,
@@ -111,6 +121,7 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   void _sessionChanged() {
     if (!mounted || _closing) return;
+    _syncDanmaku();
     final awake =
         _foreground &&
         (_session.playing || _session.buffering) &&
@@ -121,6 +132,69 @@ class _PlayerScreenState extends State<PlayerScreen>
       unawaited(_device.keepAwake(awake));
     }
     setState(() {});
+  }
+
+  /// 把播放器状态推给弹幕控制器；切集时重置分页窗口。
+  void _syncDanmaku() {
+    final service = _app.danmaku;
+    final episode = _session.episode;
+    if (service == null || episode == null) return;
+    final controller = _danmaku ??= DanmakuController(
+      service: service,
+      seriesId: _session.drama.sourceId,
+      videoId: episode.sourceEpisodeId,
+      onChanged: () {
+        if (mounted && !_closing) setState(() {});
+      },
+    );
+    if (_danmakuEpisodeId != episode.id) {
+      _danmakuEpisodeId = episode.id;
+      controller.resetForEpisode(
+        seriesId: _session.drama.sourceId,
+        videoId: episode.sourceEpisodeId,
+      );
+    }
+    final prefs = _app.preferences;
+    controller
+      ..fontSize = prefs.danmakuFontSize
+      ..opacity = prefs.danmakuOpacity
+      ..areaRatio = prefs.danmakuAreaRatio
+      ..speedFactor = prefs.danmakuSpeedFactor
+      ..update(
+        position: _session.position,
+        duration: _session.duration,
+        playing: _session.playing,
+        speed: _session.rate,
+        enabled: prefs.danmakuEnabled && !_locked,
+        foreground: _foreground && !_sheetOpen && !_paging,
+      );
+    if (_danmakuVisible != controller.visible) {
+      _danmakuVisible = controller.visible;
+      debugPrint(
+        '[Danmaku] visible=$_danmakuVisible status=${controller.status} '
+        'pos=${_session.position.inMilliseconds} '
+        'dur=${_session.duration.inMilliseconds}',
+      );
+    }
+  }
+
+  void _toggleDanmaku() {
+    _app.setPreferences(
+      _app.preferences.copyWith(
+        danmakuEnabled: !_app.preferences.danmakuEnabled,
+      ),
+    );
+    _sessionChanged();
+  }
+
+  /// 弹幕层按视频真实宽高比居中，避免竖屏/宽银幕内容时弹幕飞到黑边上。
+  double get _danmakuAspectRatio {
+    final width = _engine.player.state.width;
+    final height = _engine.player.state.height;
+    if (width != null && height != null && width > 0 && height > 0) {
+      return width / height;
+    }
+    return 9 / 16;
   }
 
   @override
@@ -360,6 +434,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _railTimer?.cancel();
     _messageTimer?.cancel();
     _gestures.dispose();
+    _danmaku?.dispose();
     _session.removeListener(_sessionChanged);
     _session.dispose();
     unawaited(_device.dispose());
@@ -426,6 +501,13 @@ class _PlayerScreenState extends State<PlayerScreen>
                       child: _buildVideoSurface(),
                     ),
                   ),
+                  if (_danmaku != null)
+                    Positioned.fill(
+                      child: DanmakuOverlay(
+                        controller: _danmaku!,
+                        aspectRatio: _danmakuAspectRatio,
+                      ),
+                    ),
                   if (!_device.applicationBrightnessAvailable)
                     IgnorePointer(
                       child: ColoredBox(
@@ -777,13 +859,14 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   Future<void> _seekEnd(double value) async {
+    final target = Duration(
+      milliseconds: (_session.duration.inMilliseconds * value).round(),
+    );
+    _danmaku?.beginSeek();
     try {
-      await _session.seek(
-        Duration(
-          milliseconds: (_session.duration.inMilliseconds * value).round(),
-        ),
-      );
+      await _session.seek(target);
     } finally {
+      _danmaku?.endSeek(target);
       _session.release('rail');
       if (mounted && !_closing) {
         setState(() => _railPreview = null);
@@ -829,6 +912,8 @@ class _PlayerScreenState extends State<PlayerScreen>
     onSeek: _canSeek ? _seekChanged : null,
     onSeekEnd: _canSeek ? _seekEnd : null,
     onSeekCancel: _cancelSeek,
+    danmakuEnabled: _app.preferences.danmakuEnabled,
+    onDanmaku: _toggleDanmaku,
   );
 
   Widget _buildLandscapeControls(double fraction, Duration displayed) =>
@@ -852,6 +937,8 @@ class _PlayerScreenState extends State<PlayerScreen>
         onSeek: _canSeek ? _seekChanged : null,
         onSeekEnd: _canSeek ? _seekEnd : null,
         onSeekCancel: _cancelSeek,
+        danmakuEnabled: _app.preferences.danmakuEnabled,
+        onDanmaku: _toggleDanmaku,
       );
   Widget _buildHandle(bool right) => Semantics(
     label: '展开播放控制栏',
