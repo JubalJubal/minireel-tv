@@ -109,8 +109,11 @@ class BufferedPlaybackEngine
     _retirements = Future.wait<void>([_retirements, disposal]).then((_) {});
   }
 
-  @override
-  void discardPreload() {
+  /// 只清待机引擎槽位，不触发 [discardPreload] 的引擎级释放钩子。
+  ///
+  /// 池内部的换预载/就地重开路径必须用这个：单解码器引擎（Exo 原生
+  /// 预备）的预备源正是随后 `open` 的消费者，不能在这里提前释放。
+  void _discardStandby() {
     ++_preloadGeneration;
     final old = _standby;
     _standby = null;
@@ -119,6 +122,9 @@ class BufferedPlaybackEngine
       _surfacesChanged();
     }
   }
+
+  @override
+  void discardPreload() => _discardStandby();
 
   @override
   Future<void> preload(
@@ -130,7 +136,7 @@ class BufferedPlaybackEngine
         identical(_standby?.source, source)) {
       return;
     }
-    discardPreload();
+    _discardStandby();
     final generation = _preloadGeneration;
     // Do not create a third decoder while the previous one is being released.
     await _retirements;
@@ -211,7 +217,7 @@ class BufferedPlaybackEngine
       await prepared.engine.setVolume(_volume);
       await prepared.engine.setRate(_rate);
     } else {
-      discardPreload();
+      _discardStandby();
       _active.source = source;
       _active.episodeId = episodeId;
       _surfacesChanged();

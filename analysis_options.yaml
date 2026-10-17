@@ -10,6 +10,11 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  errors:
+    # vendored 插件的原生诊断通道按 playerId 寻址播放器实例，
+    # video_player 把该字段标了 visibleForTesting，此处属正常使用
+    # （与参考实现一致）。
+    invalid_use_of_visible_for_testing_member: ignore
   exclude:
     # vendored 插件的 pigeon 定义与插件自测依赖 pigeon/mockito，
     # 不在宿主应用的依赖里，分析器无需检查。

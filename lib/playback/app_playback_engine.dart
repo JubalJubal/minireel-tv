@@ -20,7 +20,8 @@ BufferedPlaybackEngine createPlaybackEngine({Preferences? preferences}) {
   if (Platform.isAndroid) {
     return ExoPlaybackEngine(
       preferences: preferences,
-      allowMediaPreload: !isAndroidTV,
+      allowMediaPreload:
+          !isAndroidTV && !ExoPlaybackEngine.forceSingleDecoderMode,
     );
   }
   return MediaKitEngine(preferences: preferences);

@@ -1,9 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter/widgets.dart'
     show AspectRatio, BoxFit, Center, Clip, FittedBox, ObjectKey, SizedBox,
-    Widget;
+    Size, Widget;
 import 'package:video_player/video_player.dart';
 
 import '../core/errors/app_exception.dart';
@@ -21,15 +22,23 @@ import 'playback_engine.dart';
 /// AndroidX Media3 的 MediaCodec 管线，首帧就绪前不会向 Surface 送任何
 /// 数据，从根上规避该问题，也是各大视频 App 的标准解码路径。
 ///
-/// 引擎生命周期与 [BufferedPlaybackEngine] 对齐：待播分集先在 standby
-/// 引擎里完成 prepare（解码器就绪、首帧已出），promote 时瞬时切换。
-///
 /// [allowMediaPreload] 为 false 时（电视/盒子）不创建待机解码器：廉价
 /// 电视 SoC 的 HEVC surface 解码实例只允许极少数并存，活动播放器 +
 /// 待机播放器双解码会在待机实例初始化时把活动解码器挤掉，真机表现
-/// 为每集播放约 3 秒后报错换源、循环失败。电视端切集退回活动引擎
-/// 就地重开（URL 级预取不占解码器，仍然有效）。
+/// 为每集播放约 3 秒后报错换源、循环失败。
+///
+/// 单解码器模式下，切集走 vendored 插件的原生通道：
+/// * 预载 = `prepareNext`，Media3 DefaultPreloadManager 在同一个
+///   ExoPlayer 里只缓冲不解码下一集（不占解码器配额）；
+/// * 切集 = `transition`，`setMediaSource` 原地换源，解码器与 surface
+///   保留，等首帧后返回时长/尺寸。没有预备源时也能原地换，只是要
+///   重新缓冲，比销毁重建控制器的过场短且不闪黑。
 final class ExoPlaybackEngine extends BufferedPlaybackEngine {
+  /// 调试用：非电视设备强制走电视端单解码器路径（回归测试用）。
+  static const forceSingleDecoderMode = bool.fromEnvironment(
+    'MINIREEL_EXO_TV_MODE',
+  );
+
   ExoPlaybackEngine({
     Preferences? preferences,
     VideoViewType viewType = VideoViewType.textureView,
@@ -39,12 +48,6 @@ final class ExoPlaybackEngine extends BufferedPlaybackEngine {
   final bool allowMediaPreload;
 
   _ExoPlayer get _activePlayer => activeEngine as _ExoPlayer;
-
-  @override
-  Future<void> preload(PlaybackSource source, {required String episodeId}) =>
-      allowMediaPreload
-      ? super.preload(source, episodeId: episodeId)
-      : Future<void>.value();
 
   @override
   Widget? videoView({String? episodeId, BoxFit fit = BoxFit.contain}) {
@@ -99,6 +102,53 @@ final class ExoPlaybackEngine extends BufferedPlaybackEngine {
     super.applyPreferences(preferences);
     _activePlayer.updatePreferences(preferences);
   }
+
+  @override
+  Future<void> preload(PlaybackSource source, {required String episodeId}) {
+    if (allowMediaPreload) return super.preload(source, episodeId: episodeId);
+    return _activePlayer.prepareEpisode(source, episodeId);
+  }
+
+  @override
+  String? get preloadedEpisodeId {
+    if (allowMediaPreload) return super.preloadedEpisodeId;
+    return _activePlayer.preparedEpisodeId;
+  }
+
+  @override
+  void discardPreload() {
+    if (allowMediaPreload) {
+      super.discardPreload();
+      return;
+    }
+    _activePlayer.discardPreparedEpisode();
+  }
+}
+
+/// 原生预备好的下一集：取流结果（含解密代理会话）+ 原生预备身份。
+final class _PreparedNextPlan {
+  const _PreparedNextPlan({
+    required this.episodeId,
+    required this.playUri,
+    required this.headers,
+    required this.mediaType,
+    required this.proxyUrl,
+    required this.source,
+  });
+
+  final String episodeId;
+  final Uri playUri;
+  final Map<String, String> headers;
+  final String mediaType;
+
+  /// 该集的本机解密代理会话；transition 成功后由活动播放接管。
+  final Uri? proxyUrl;
+
+  /// 原始取流结果，切集失败退回完整重开时使用。
+  final PlaybackSource source;
+
+  bool matchesSource(PlaybackSource source) =>
+      source.uri == this.source.uri && source.quality == this.source.quality;
 }
 
 final class _ExoPlayer implements PlaybackEngine {
@@ -119,6 +169,7 @@ final class _ExoPlayer implements PlaybackEngine {
   }
 
   static const _initializationTimeout = Duration(seconds: 20);
+  static const _diagnosticsChannel = MethodChannel('hongguo/video_diagnostics');
 
   Preferences _prefs;
   final VideoViewType _viewType;
@@ -130,12 +181,21 @@ final class _ExoPlayer implements PlaybackEngine {
   bool _disposed = false;
   Uri? _proxyUrl;
 
+  /// 原生预备的下一集；null 表示当前没有可无缝切换的预备源。
+  _PreparedNextPlan? _prepared;
+  bool _transitioning = false;
+  int _prepareTicket = 0;
+  int _transitionTicket = 0;
+  DateTime _prepareRetryAt = DateTime(2000);
+
   @override
   final ValueNotifier<EngineSnapshot> state = ValueNotifier(
     const EngineSnapshot(),
   );
 
   VideoPlayerController? get controller => _controller;
+
+  String? get preparedEpisodeId => _prepared?.episodeId;
 
   void updatePreferences(Preferences preferences) {
     _prefs = preferences;
@@ -157,6 +217,42 @@ final class _ExoPlayer implements PlaybackEngine {
     if (url == null) return;
     CencProxyPool.release(url);
   }
+
+  Future<Map<Object?, Object?>?> _invokeDiagnostics(
+    String method,
+    Map<String, Object> arguments,
+    Duration timeout,
+  ) => _diagnosticsChannel
+      .invokeMapMethod<String, Object?>(method, arguments)
+      .timeout(timeout);
+
+  /// 取流到「可交给播放器的地址」：CENC 媒体先经本机代理解密成明文
+  /// MP4。返回的代理会话由调用方负责释放。
+  Future<({Uri uri, Map<String, String> headers, Uri? proxy})> _resolveMedia(
+    PlaybackSource source,
+  ) async {
+    var playUri = source.uri;
+    var playHeaders = source.headers;
+    Uri? proxyUrl;
+    if (source.kind == PlaybackKind.cenc) {
+      if (source.contentKey?.length != 16) {
+        throw const AppException('本集播放信息不完整，请重试');
+      }
+      // 与参考实现一致：CENC 媒体先由本机代理解密成明文 MP4 再交给播放器。
+      final proxy = await CencProxyPool.acquire();
+      final local = await proxy.open(source);
+      proxyUrl = local;
+      playUri = local;
+      playHeaders = const {};
+    }
+    return (uri: playUri, headers: playHeaders, proxy: proxyUrl);
+  }
+
+  String _mediaTypeOf(Uri uri) =>
+      uri.path.toLowerCase().endsWith('.m3u8') ||
+          uri.toString().toLowerCase().contains('.m3u8?')
+      ? 'hls'
+      : 'mp4';
 
   VideoPlayerController _createController(
     Uri uri, {
@@ -181,46 +277,57 @@ final class _ExoPlayer implements PlaybackEngine {
     if (!valid()) return;
     _errors.reset();
     _errors.setPlaying(false);
-    await _releaseController();
+    // 无缝切集：目标集已原生预备且从头播放时，在同一个 ExoPlayer 上
+    // 原地换源，解码器与 surface 保留，不闪黑也不重建纹理。
+    final prepared = _prepared;
+    final controller = _controller;
+    if (prepared != null &&
+        prepared.episodeId == episodeId &&
+        start == Duration.zero &&
+        controller != null &&
+        controller.value.isInitialized &&
+        !controller.value.hasError) {
+      await _transitionEpisode(prepared, source, valid);
+      return;
+    }
+    await _openFresh(source, start: start, isCurrent: valid);
+  });
+
+  /// 销毁重建控制器的完整打开流程；首次播放、恢复播放、切集兜底都走这里。
+  Future<void> _openFresh(
+    PlaybackSource source, {
+    required Duration start,
+    required bool Function() isCurrent,
+  }) async {
+    bool valid() => !_disposed && isCurrent();
+    await _clearPrepared();
     _releaseProxy();
+    await _releaseController();
     if (!valid()) return;
     debugPrint(
       '[ExoEngine] open kind=${source.kind.name} route=${source.route.name} '
       'quality=${source.quality} host=${source.uri.host}',
     );
-    var playUri = source.uri;
-    var playHeaders = source.headers;
-    if (source.kind == PlaybackKind.cenc) {
-      if (source.contentKey?.length != 16) {
-        throw const AppException('本集播放信息不完整，请重试');
-      }
-      // 与参考实现一致：CENC 媒体先由本机代理解密成明文 MP4 再交给播放器。
-      try {
-        final proxy = await CencProxyPool.acquire();
-        final local = await proxy.open(source);
-        if (!valid()) {
-          proxy.release(local);
-          return;
-        }
-        _proxyUrl = local;
-        playUri = local;
-        playHeaders = const {};
-      } on Object catch (error) {
-        debugPrint('[ExoEngine] CENC 本地转发不可用: $error');
-        _releaseProxy();
-        throw const AppException('本集播放信息不完整，请重试');
-      }
+    final ({Uri uri, Map<String, String> headers, Uri? proxy}) media;
+    try {
+      media = await _resolveMedia(source);
+    } on AppException {
+      rethrow;
+    } on Object catch (error) {
+      debugPrint('[ExoEngine] CENC 本地转发不可用: $error');
+      throw const AppException('本集播放信息不完整，请重试');
     }
-    final isHls =
-        playUri.path.toLowerCase().endsWith('.m3u8') ||
-        playUri.toString().toLowerCase().contains('.m3u8?');
-    var formatHint = isHls ? VideoFormat.hls : null;
-
+    _proxyUrl = media.proxy;
     if (!valid()) return;
     _emit(const EngineSnapshot(buffering: true));
+    final isHls =
+        media.uri.path.toLowerCase().endsWith('.m3u8') ||
+        media.uri.toString().toLowerCase().contains('.m3u8?');
+    var formatHint = isHls ? VideoFormat.hls : null;
+
     var controller = _createController(
-      playUri,
-      headers: playHeaders,
+      media.uri,
+      headers: media.headers,
       formatHint: formatHint,
     );
     try {
@@ -231,14 +338,14 @@ final class _ExoPlayer implements PlaybackEngine {
         return;
       }
       // 来源未标注 HLS 且初始化失败时，按参考实现做一次格式自愈重试。
-      if (formatHint == null && !playUri.isScheme('file')) {
+      if (formatHint == null && !media.uri.isScheme('file')) {
         debugPrint('[ExoEngine] 初始化失败，切换 HLS 格式重试: $error');
         await _disposeController(controller);
         if (!valid()) return;
         formatHint = VideoFormat.hls;
         controller = _createController(
-          playUri,
-          headers: playHeaders,
+          media.uri,
+          headers: media.headers,
           formatHint: formatHint,
         );
         try {
@@ -283,7 +390,7 @@ final class _ExoPlayer implements PlaybackEngine {
       if (!valid()) return;
       _emit(state.value.copyWith(position: start));
     }
-  });
+  }
 
   @override
   Future<void> stop() => _serialize(() async {
@@ -343,9 +450,7 @@ final class _ExoPlayer implements PlaybackEngine {
     try {
       // ExoPlayer 音量上限 1.0；音频增强只在 0-100% 范围内生效。
       final multiplier = 1.0 + (_prefs.audioBoost / 100.0);
-      await controller.setVolume(
-        (volume * multiplier).clamp(0.0, 1.0),
-      );
+      await controller.setVolume((volume * multiplier).clamp(0.0, 1.0));
     } on Object catch (_) {}
   }
 
@@ -357,9 +462,163 @@ final class _ExoPlayer implements PlaybackEngine {
     _positionPoll?.cancel();
     _positionPoll = null;
     await _operations;
+    await _clearPrepared();
     await _releaseController();
     _releaseProxy();
     state.dispose();
+  }
+
+  // ── 原生预备/切集（单解码器模式） ──
+
+  /// 让活动播放器原生预备下一集：只缓冲不解码，不占解码器配额。
+  Future<void> prepareEpisode(PlaybackSource source, String episodeId) async {
+    if (_disposed || _transitioning) return;
+    final controller = _controller;
+    if (controller == null ||
+        !controller.value.isInitialized ||
+        controller.value.hasError) {
+      return;
+    }
+    final current = _prepared;
+    if (current != null && current.matchesSource(source)) {
+      return;
+    }
+    if (DateTime.now().isBefore(_prepareRetryAt)) return;
+    final ticket = ++_prepareTicket;
+    final ({Uri uri, Map<String, String> headers, Uri? proxy}) media;
+    try {
+      media = await _resolveMedia(source);
+    } on Object {
+      return;
+    }
+    if (_disposed || ticket != _prepareTicket) {
+      CencProxyPool.release(media.proxy);
+      return;
+    }
+    final plan = _PreparedNextPlan(
+      episodeId: episodeId,
+      playUri: media.uri,
+      headers: media.headers,
+      mediaType: _mediaTypeOf(media.uri),
+      proxyUrl: media.proxy,
+      source: source,
+    );
+    await _clearPrepared();
+    try {
+      final result = await _invokeDiagnostics('prepareNext', {
+        'playerId': controller.playerId,
+        'identity': episodeId,
+        'url': '${plan.playUri}',
+        'headers': plan.headers,
+        'mediaType': plan.mediaType,
+      }, const Duration(seconds: 12));
+      if (_disposed || ticket != _prepareTicket) {
+        CencProxyPool.release(plan.proxyUrl);
+        return;
+      }
+      if (result?['prepared'] != true) {
+        throw StateError('下一集尚未预备就绪');
+      }
+      _prepared = plan;
+      debugPrint('[ExoEngine] prepareNext ready episode=$episodeId');
+    } on Object catch (error) {
+      if (_disposed || ticket != _prepareTicket) return;
+      debugPrint('[ExoEngine] prepareNext 不可用: $error');
+      CencProxyPool.release(plan.proxyUrl);
+      _prepareRetryAt = DateTime.now().add(const Duration(seconds: 3));
+    }
+  }
+
+  void discardPreparedEpisode() {
+    if (_prepared == null) return;
+    unawaited(_clearPrepared());
+  }
+
+  /// 取消原生预备并释放其代理会话；活动播放不受影响。
+  Future<void> _clearPrepared() async {
+    final plan = _prepared;
+    _prepared = null;
+    if (plan == null) return;
+    final controller = _controller;
+    if (controller != null) {
+      try {
+        await _invokeDiagnostics('clearNext', {
+          'playerId': controller.playerId,
+          'identity': plan.episodeId,
+        }, const Duration(seconds: 2));
+      } on Object catch (_) {}
+    }
+    CencProxyPool.release(plan.proxyUrl);
+  }
+
+  /// 在同一个 ExoPlayer 上原地换源。失败时退回 [_openFresh]。
+  Future<void> _transitionEpisode(
+    _PreparedNextPlan plan,
+    PlaybackSource source,
+    bool Function() valid,
+  ) async {
+    final controller = _controller!;
+    final ticket = ++_transitionTicket;
+    _transitioning = true;
+    _errors.reset();
+    _errors.setPlaying(false);
+    _positionPoll?.cancel();
+    _positionPoll = null;
+    // 上一集的解密代理会话就此结束；预备计划里的会话成为活动会话。
+    _releaseProxy();
+    _proxyUrl = plan.proxyUrl;
+    _prepared = null;
+    debugPrint(
+      '[ExoEngine] transition episode=${plan.episodeId} '
+      'host=${plan.playUri.host}',
+    );
+    _emit(const EngineSnapshot(buffering: true));
+    try {
+      final result = await _invokeDiagnostics('transition', {
+        'playerId': controller.playerId,
+        'url': '${plan.playUri}',
+        'headers': plan.headers,
+        'identity': plan.episodeId,
+        'mediaType': plan.mediaType,
+        'requestElapsedMs': 0,
+      }, const Duration(seconds: 10));
+      if (_disposed || ticket != _transitionTicket || _controller != controller) {
+        return;
+      }
+      if (result == null) throw StateError('切集未返回结果');
+      final durationMs = (result['durationMs'] as num?)?.toInt() ?? 0;
+      final width = (result['width'] as num?)?.toDouble() ?? 0;
+      final height = (result['height'] as num?)?.toDouble() ?? 0;
+      // 同步控制器值：随后的监听事件与渲染层都要用新的时长/尺寸。
+      controller.value = controller.value.copyWith(
+        duration: Duration(milliseconds: durationMs),
+        position: Duration.zero,
+        buffered: const [],
+        size: width > 0 && height > 0 ? Size(width, height) : controller.value.size,
+        isInitialized: true,
+        isCompleted: false,
+        isPlaying: false,
+        isBuffering: false,
+        errorDescription: null,
+      );
+      _emit(
+        const EngineSnapshot().copyWith(
+          duration: Duration(milliseconds: durationMs),
+        ),
+      );
+      debugPrint(
+        '[ExoEngine] transitioned usedPrepared=${result['usedPrepared']} '
+        'firstFrame=${result['firstFrame']} duration=${durationMs}ms',
+      );
+      _transitioning = false;
+      _startPositionPoll();
+    } on Object catch (error) {
+      if (_disposed || ticket != _transitionTicket) return;
+      debugPrint('[ExoEngine] transition 失败，退回完整重开: $error');
+      _transitioning = false;
+      _releaseProxy();
+      await _openFresh(source, start: Duration.zero, isCurrent: valid);
+    }
   }
 
   void _startPositionPoll() {
@@ -378,7 +637,7 @@ final class _ExoPlayer implements PlaybackEngine {
   }
 
   void _onControllerChanged(VideoPlayerController controller) {
-    if (_disposed || _controller != controller) return;
+    if (_disposed || _controller != controller || _transitioning) return;
     final value = controller.value;
     if (value.hasError) {
       _reportError(value.errorDescription ?? '播放器发生未知错误', null);
