@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+// ignore: unnecessary_import
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 

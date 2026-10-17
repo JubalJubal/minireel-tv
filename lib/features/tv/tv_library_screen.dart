@@ -7,7 +7,6 @@ import '../../app/theme.dart';
 import '../../data/repositories/drama_repository.dart';
 import '../../domain/models/drama.dart';
 import '../../domain/models/catalog_order.dart';
-import '../shared/drama_metadata.dart';
 import '../detail/detail_sheet.dart';
 import '../shared/widgets.dart';
 import 'tv_focus.dart';
