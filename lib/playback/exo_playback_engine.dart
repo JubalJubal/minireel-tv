@@ -23,13 +23,28 @@ import 'playback_engine.dart';
 ///
 /// 引擎生命周期与 [BufferedPlaybackEngine] 对齐：待播分集先在 standby
 /// 引擎里完成 prepare（解码器就绪、首帧已出），promote 时瞬时切换。
+///
+/// [allowMediaPreload] 为 false 时（电视/盒子）不创建待机解码器：廉价
+/// 电视 SoC 的 HEVC surface 解码实例只允许极少数并存，活动播放器 +
+/// 待机播放器双解码会在待机实例初始化时把活动解码器挤掉，真机表现
+/// 为每集播放约 3 秒后报错换源、循环失败。电视端切集退回活动引擎
+/// 就地重开（URL 级预取不占解码器，仍然有效）。
 final class ExoPlaybackEngine extends BufferedPlaybackEngine {
   ExoPlaybackEngine({
     Preferences? preferences,
     VideoViewType viewType = VideoViewType.textureView,
+    this.allowMediaPreload = true,
   }) : super((_) => _ExoPlayer(preferences, viewType));
 
+  final bool allowMediaPreload;
+
   _ExoPlayer get _activePlayer => activeEngine as _ExoPlayer;
+
+  @override
+  Future<void> preload(PlaybackSource source, {required String episodeId}) =>
+      allowMediaPreload
+      ? super.preload(source, episodeId: episodeId)
+      : Future<void>.value();
 
   @override
   Widget? videoView({String? episodeId, BoxFit fit = BoxFit.contain}) {
@@ -374,9 +389,9 @@ final class _ExoPlayer implements PlaybackEngine {
         playing: value.isPlaying,
         buffering: value.isBuffering,
         duration: value.duration > Duration.zero ? value.duration : null,
-        completed: value.isCompleted && value.duration > Duration.zero
-            ? true
-            : null,
+        // isCompleted 必须双向同步：seek 离开片尾后要能把快照里的
+        // completed 重置回 false，否则会话会认为本集已播完。
+        completed: value.duration > Duration.zero ? value.isCompleted : null,
         buffer: value.buffered.isEmpty ? null : value.buffered.last.end,
       ),
     );
@@ -385,8 +400,13 @@ final class _ExoPlayer implements PlaybackEngine {
   void _reportError(String message, Object? cause) {
     debugPrint('[ExoEngine] error: $message (${cause ?? ''})');
     _errors.reportError();
-    if (state.value.error != message) {
-      _emit(state.value.copyWith(error: message, buffering: false));
+    // 把 Exo 的原始错误类别带出来：真机上失败 UI 展示的这条消息是
+    // 判断解码器/网络类问题的关键线索。
+    final match = RegExp('ERROR_CODE_[A-Z_]+').firstMatch(message);
+    final code = match?.group(0);
+    final detail = code == null ? message : '视频播放失败（$code）';
+    if (state.value.error != detail) {
+      _emit(state.value.copyWith(error: detail, buffering: false));
     }
   }
 

@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import '../app/platform.dart';
 import '../domain/models/preferences.dart';
 import 'buffered_playback_engine.dart';
 import 'exo_playback_engine.dart';
@@ -11,9 +12,16 @@ import 'media_kit_engine.dart';
 /// libmpv MediaCodec 硬解首帧时的花屏，软解又不够快）；Windows/macOS
 /// 继续用 media_kit (libmpv)。两套引擎都实现 [BufferedPlaybackEngine]
 /// 的池化协议，播放会话、预载与切集逻辑完全不感知差异。
+///
+/// 电视/盒子禁用媒体级待机预载：这些设备的 HEVC surface 解码实例
+/// 配额极小，双解码器并存会把活动解码器挤掉（详见
+/// [ExoPlaybackEngine.allowMediaPreload]）。
 BufferedPlaybackEngine createPlaybackEngine({Preferences? preferences}) {
   if (Platform.isAndroid) {
-    return ExoPlaybackEngine(preferences: preferences);
+    return ExoPlaybackEngine(
+      preferences: preferences,
+      allowMediaPreload: !isAndroidTV,
+    );
   }
   return MediaKitEngine(preferences: preferences);
 }
