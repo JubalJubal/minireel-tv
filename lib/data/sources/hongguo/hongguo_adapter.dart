@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../core/config/source_config.dart';
 import '../../../core/errors/app_exception.dart';
@@ -150,22 +151,35 @@ final class HongguoAdapter
       throw const AppException('分集信息已失效，请刷新短剧后重试');
     }
     cancelToken?.throwIfCancellationRequested();
+    var appError = '';
     if (start == PlaybackRoute.app) {
       try {
         return await mediaService.resolve(
           episode.sourceEpisodeId,
           cancelToken: cancelToken,
         );
-      } on AppException {
+      } on AppException catch (error) {
+        appError = error.message;
+        debugPrint('[Resolve] App 取流失败: ${error.message}');
         cancelToken?.throwIfCancellationRequested();
       }
     }
-    return web.resolvePlayback(
-      drama,
-      episode,
-      cancelToken: cancelToken,
-      fallbackOnly: start == PlaybackRoute.fallback,
-    );
+    try {
+      return await web.resolvePlayback(
+        drama,
+        episode,
+        cancelToken: cancelToken,
+        fallbackOnly: start == PlaybackRoute.fallback,
+      );
+    } on AppException catch (error) {
+      debugPrint('[Resolve] 网页/备用取流失败: ${error.message}');
+      if (appError.isNotEmpty) {
+        // 两条链路都失败时把真实原因带回 UI：release 包没有日志，
+        // 只显示「本集暂时无法播放」会让真机问题无从定位。
+        throw AppException('App 取流：$appError；兜底取流：${error.message}');
+      }
+      rethrow;
+    }
   }
 
   void _validateId(String id) {

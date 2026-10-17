@@ -214,10 +214,12 @@ final class PlaybackSession extends ChangeNotifier {
       _schedulePrefetch(generation);
       _notify();
     } on DioException catch (error) {
+      debugPrint('[Session] Dio 异常: $error');
       if (!CancelToken.isCancel(error) && _current(generation)) {
         _fail('网络连接失败，请重试');
       }
     } on AppException catch (error) {
+      debugPrint('[Session] 取流/播放异常: ${error.message}');
       if (_current(generation)) {
         if (options != null) {
           resolving = false;
@@ -227,7 +229,8 @@ final class PlaybackSession extends ChangeNotifier {
           _fail(error.message);
         }
       }
-    } on Exception {
+    } on Exception catch (error, stack) {
+      debugPrint('[Session] 播放异常: $error\n$stack');
       if (_current(generation)) {
         if (options != null) {
           resolving = false;

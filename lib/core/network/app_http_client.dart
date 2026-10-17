@@ -83,8 +83,9 @@ final class AppHttpClient implements TextClient, SignedJsonClient {
   }) async {
     for (var attempt = 0; attempt < _config.retries; attempt++) {
       cancelToken?.throwIfCancellationRequested();
+      Uri? uri;
       try {
-        final uri = prepareUri();
+        uri = prepareUri();
         final response = await _dio.requestUri<ResponseBody>(
           uri,
           data: body,
@@ -123,8 +124,10 @@ final class AppHttpClient implements TextClient, SignedJsonClient {
       } on DioException catch (error) {
         if (CancelToken.isCancel(error)) rethrow;
         if (attempt == _config.retries - 1) {
-          throw const AppException(
-            '网络连接较慢，请检查网络后重试',
+          // 把失败类型和主机带回 UI：release 包没有日志，只显示「网络连接
+          // 较慢」会让真机问题无从定位。
+          throw AppException(
+            '网络连接较慢（${error.type.name} ${uri?.host ?? ''}），请检查网络后重试',
             kind: FailureKind.network,
           );
         }

@@ -1,5 +1,10 @@
 allprojects {
     repositories {
+        // 与 pluginManagement 一致：本地开发优先走阿里云镜像，CI 只保留官方源。
+        if (System.getenv("CI") == null) {
+            maven { url = uri("https://maven.aliyun.com/repository/google") }
+            maven { url = uri("https://maven.aliyun.com/repository/public") }
+        }
         google()
         mavenCentral()
     }

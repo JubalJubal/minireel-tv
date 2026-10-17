@@ -14,6 +14,7 @@ import 'app/platform.dart';
 import 'app/theme.dart';
 import 'core/config/source_config.dart';
 import 'core/network/app_http_client.dart';
+import 'core/services/diagnostic_log.dart';
 import 'data/local/sqlite_app_store.dart';
 import 'data/repositories/drama_repository.dart';
 import 'data/sources/hongguo/hongguo_adapter.dart';
@@ -87,6 +88,9 @@ class _MiniReelBootstrapState extends State<MiniReelBootstrap> {
     );
     final http = _http = AppHttpClient(config);
     final store = await SqliteAppStore.open();
+    // 放在 sqflite 打开之后：release 下通道就绪较晚，太早取 databases
+    // 路径会失败，诊断日志就永远不落盘。
+    await initDiagnosticLog();
     try {
       final repository = DramaRepository(
         SourceRegistry([

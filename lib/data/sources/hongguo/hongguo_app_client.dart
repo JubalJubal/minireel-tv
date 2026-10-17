@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../core/config/source_config.dart';
 import '../../../core/errors/app_exception.dart';
@@ -66,6 +67,7 @@ final class HongguoAppClient {
     cancelToken?.throwIfCancellationRequested();
     final body = jsonEncode(payload);
     late DateTime now;
+    final signed = path != hongguoVideoModelPath;
     final text = await (transport as SignedJsonClient).postSignedJson(
       () {
         now = DateTime.now();
@@ -86,18 +88,24 @@ final class HongguoAppClient {
         return config.appBaseUrl!.resolve(path).replace(query: query);
       },
       body,
-      (uri) => {
-        ...config.appHeaders,
-        'User-Agent': config.appUserAgent,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json; charset=utf-8',
-        'X-XS-From-Web': '0',
-        'Sdk-Version': '2',
-        if (path != hongguoVideoModelPath)
-          ...signHongguoRequest(uri, body, now),
+      (uri) {
+        debugPrint(
+          '[HongguoApp] POST $path signed=$signed '
+          'deviceId=${_deviceId.length}字 iid=${_installId.length}字',
+        );
+        return {
+          ...config.appHeaders,
+          'User-Agent': config.appUserAgent,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
+          'X-XS-From-Web': '0',
+          'Sdk-Version': '2',
+          if (signed) ...signHongguoRequest(uri, body, now),
+        };
       },
       cancelToken: cancelToken,
     );
+    debugPrint('[HongguoApp] $path -> ${text.length}B');
     cancelToken?.throwIfCancellationRequested();
     try {
       final decoded = jsonDecode(text);
@@ -112,6 +120,7 @@ final class HongguoAppClient {
       }
       return decoded;
     } on FormatException {
+      debugPrint('[HongguoApp] $path 响应非 JSON: ${text.substring(0, text.length.clamp(0, 120))}');
       throw const AppException('App 接口返回格式异常', kind: FailureKind.parsing);
     }
   }

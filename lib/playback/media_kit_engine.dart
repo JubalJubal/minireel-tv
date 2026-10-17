@@ -12,6 +12,7 @@ import '../domain/models/preferences.dart';
 import 'buffered_playback_engine.dart';
 import 'playback_engine.dart';
 import 'native_error_guard.dart';
+import 'cenc/cenc_playback_proxy.dart';
 
 final class MediaKitEngine extends BufferedPlaybackEngine {
   MediaKitEngine({this.preferences})
@@ -44,6 +45,7 @@ final class _MediaKitPlayer implements PlaybackEngine {
                   1024 *
                   1024),
           muted: _preloading,
+          logLevel: MPVLogLevel.info,
         ),
       ) {
     _errors = NativeErrorGuard(
@@ -78,7 +80,13 @@ final class _MediaKitPlayer implements PlaybackEngine {
       player.stream.completed.listen(
         (v) => _emit(state.value.copyWith(completed: v)),
       ),
-      player.stream.error.listen((_) => _errors.reportError()),
+      player.stream.error.listen((error) {
+        debugPrint('[mpv] error: $error');
+        _errors.reportError();
+      }),
+      player.stream.log.listen((event) {
+        debugPrint('[mpv] ${event.level} ${event.prefix}: ${event.text}');
+      }),
     ]);
   }
 
@@ -94,6 +102,33 @@ final class _MediaKitPlayer implements PlaybackEngine {
   );
   Future<void> _operations = Future.value();
   bool _disposed = false;
+  Uri? _proxyUrl;
+
+  static Future<CencPlaybackProxy>? _proxyFuture;
+
+  static Future<CencPlaybackProxy> _ensureProxy() async {
+    final existing = _proxyFuture;
+    if (existing != null) return existing;
+    final created = CencPlaybackProxy.start();
+    _proxyFuture = created;
+    try {
+      return await created;
+    } on Object {
+      _proxyFuture = null;
+      rethrow;
+    }
+  }
+
+  void _releaseProxy() {
+    final url = _proxyUrl;
+    _proxyUrl = null;
+    if (url == null) return;
+    final future = _proxyFuture;
+    if (future == null) return;
+    unawaited(
+      future.then<void>((proxy) => proxy.release(url), onError: (Object _) {}),
+    );
+  }
 
   void updatePreferences(Preferences preferences) {
     _prefs = preferences;
@@ -122,11 +157,38 @@ final class _MediaKitPlayer implements PlaybackEngine {
     _errors.reset();
     _errors.setPlaying(false);
     await player.stop();
+    _releaseProxy();
     if (!valid()) return;
+    debugPrint(
+      '[Engine] open kind=${source.kind.name} route=${source.route.name} '
+      'quality=${source.quality} host=${source.uri.host} key=${source.keyHex.length}',
+    );
     final native = player.platform;
+    var playUri = source.uri;
+    var playHeaders = source.headers;
+    var viaProxy = false;
     if (native is NativePlayer) {
       if (source.kind == PlaybackKind.cenc && source.contentKey?.length != 16) {
         throw const AppException('本集播放信息不完整，请重试');
+      }
+      if (source.kind == PlaybackKind.cenc) {
+        // 与参考实现一致：CENC 媒体先由本机代理解密成明文 MP4 再交给播放器，
+        // 不依赖 libmpv 是否支持 cenc-aes-ctr 直解（不同 TV 固件差异很大）。
+        try {
+          final proxy = await _ensureProxy();
+          final local = await proxy.open(source);
+          if (!valid()) {
+            proxy.release(local);
+            return;
+          }
+          _proxyUrl = local;
+          playUri = local;
+          playHeaders = const {};
+          viaProxy = true;
+        } on Object catch (error) {
+          debugPrint('[Engine] CENC 本地转发不可用，回退播放器解密: $error');
+          _releaseProxy();
+        }
       }
       // Clear the previous key for EVERY open, including unencrypted media.
       await native.setProperty(
@@ -136,7 +198,7 @@ final class _MediaKitPlayer implements PlaybackEngine {
           'reconnect_streamed=1',
           'reconnect_on_network_error=1',
           'reconnect_delay_max=2',
-          if (source.kind == PlaybackKind.cenc)
+          if (source.kind == PlaybackKind.cenc && !viaProxy)
             'decryption_key=${source.keyHex}',
         ].join(','),
       );
@@ -179,15 +241,19 @@ final class _MediaKitPlayer implements PlaybackEngine {
     }
     if (!valid()) return;
     _emit(const EngineSnapshot(buffering: true));
+    debugPrint('[Engine] playUri=$playUri viaProxy=$viaProxy');
     // Always open paused: a late network response can never start audio
     // behind a sheet, in the background, or after the viewer leaves.
     await player.open(
       Media(
-        source.uri.toString(),
-        httpHeaders: source.headers,
+        playUri.toString(),
+        httpHeaders: playHeaders,
         start: start > Duration.zero ? start : null,
       ),
       play: false,
+    );
+    debugPrint(
+      '[Engine] opened duration=${player.state.duration}',
     );
     if (!valid()) await player.stop();
   });
@@ -198,6 +264,7 @@ final class _MediaKitPlayer implements PlaybackEngine {
     _errors.reset();
     _errors.setPlaying(false);
     await player.stop();
+    _releaseProxy();
     _emit(const EngineSnapshot());
   });
 
@@ -250,6 +317,7 @@ final class _MediaKitPlayer implements PlaybackEngine {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    _releaseProxy();
     _errors.dispose();
     for (final subscription in _subscriptions) {
       await subscription.cancel();

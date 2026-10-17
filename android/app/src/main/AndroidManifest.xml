@@ -22,4 +22,13 @@
             <data android:mimeType="application/vnd.android.package-archive"/>
         </intent>
     </queries>
+    <application>
+        <!-- release 也关闭 Impeller：Android TV 与模拟器的 Vulkan/MESA 实现
+             在 external texture 路径上不稳定，表现为视频起播即失败、只能退回
+             试看源。Skia/OpenGL 已验证可稳定播放；debug 构建的同一配置见
+             src/debug/AndroidManifest.xml。 -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
+    </application>
 </manifest>
