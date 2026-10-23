@@ -52,6 +52,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _cache ??= AppScope.read(context).store.cacheBytes();
   }
 
+  String _dailyLimitLabel(int minutes) {
+    final hours = minutes ~/ 60;
+    final rest = minutes % 60;
+    return rest == 0 ? '$hours 小时' : '$hours 小时 $rest 分钟';
+  }
+
+  String _bedtimeLabel(int minute) {
+    final hour = minute ~/ 60 % 24;
+    final rest = minute % 60;
+    return '${hour.toString().padLeft(2, '0')}:${rest.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.watch(context);
@@ -142,6 +154,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       0.4: '40% (推荐)',
       0.55: '55%',
       0.7: '70% · 满屏弹幕',
+    };
+    final dailyLimitOptions = {
+      60: '1 小时',
+      120: '2 小时',
+      180: '3 小时',
+      240: '4 小时 (推荐)',
+      360: '6 小时',
+    };
+    final bedtimeOptions = {
+      21 * 60: '21:00',
+      22 * 60: '22:00',
+      23 * 60: '23:00 (推荐)',
+      24 * 60: '00:00',
+      60: '01:00',
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -443,6 +469,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   prefs.prefetchNextEpisode,
                   (v) =>
                       app.setPreferences(prefs.copyWith(prefetchNextEpisode: v)),
+                ),
+              ]),
+              _group('观看提醒', [
+                _toggle(
+                  Icons.hourglass_top_rounded,
+                  '每日时长提醒',
+                  prefs.watchReminderEnabled,
+                  (v) => app.setPreferences(
+                    prefs.copyWith(watchReminderEnabled: v),
+                  ),
+                ),
+                _row(
+                  Icons.schedule_rounded,
+                  '每日观看上限',
+                  value: _dailyLimitLabel(prefs.watchDailyLimitMinutes),
+                  onTap: prefs.watchReminderEnabled
+                      ? () async {
+                          final value = await pickOption<int>(
+                            context,
+                            title: '每日观看上限',
+                            value: prefs.watchDailyLimitMinutes,
+                            options: dailyLimitOptions,
+                          );
+                          if (value != null) {
+                            app.setPreferences(
+                              app.preferences.copyWith(
+                                watchDailyLimitMinutes: value,
+                              ),
+                            );
+                          }
+                        }
+                      : null,
+                ),
+                _toggle(
+                  Icons.bedtime_rounded,
+                  '睡觉时间提醒',
+                  prefs.bedtimeReminderEnabled,
+                  (v) => app.setPreferences(
+                    prefs.copyWith(bedtimeReminderEnabled: v),
+                  ),
+                ),
+                _row(
+                  Icons.nights_stay_rounded,
+                  '睡觉时间',
+                  value: _bedtimeLabel(prefs.bedtimeMinute),
+                  onTap: prefs.bedtimeReminderEnabled
+                      ? () async {
+                          final value = await pickOption<int>(
+                            context,
+                            title: '睡觉时间',
+                            value: prefs.bedtimeMinute,
+                            options: bedtimeOptions,
+                          );
+                          if (value != null) {
+                            app.setPreferences(
+                              app.preferences.copyWith(bedtimeMinute: value),
+                            );
+                          }
+                        }
+                      : null,
                 ),
               ]),
               _group('弹幕', [

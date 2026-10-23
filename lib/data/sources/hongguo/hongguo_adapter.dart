@@ -245,6 +245,7 @@ final class HongguoAdapter
         return mediaService.resolve(
           episode.sourceEpisodeId,
           cancelToken: cancelToken,
+          contentType: episode.contentType,
         );
       case SourceRouteIds.web:
         return web

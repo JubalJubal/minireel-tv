@@ -71,6 +71,19 @@ final class HongguoDetailService {
     }
   }
 
+  /// 红果按剧集下发 content_type（普通短剧 1，AI/漫画等 1000+），
+  /// 取流时必须原样回传；范围外的值按普通短剧处理。
+  static int _contentTypeOf(String value, {String fallback = ''}) {
+    for (final candidate in [value, fallback]) {
+      final parsed = int.tryParse(candidate);
+      if (parsed != null &&
+          (parsed >= 1 && parsed <= 7 || parsed >= 1000 && parsed <= 1011)) {
+        return parsed;
+      }
+    }
+    return 1;
+  }
+
   DramaDetail parse(Map<String, dynamic> result, Drama drama) {
     final data = objectMap(objectMap(result['data'])['video_data']);
     if (field(data, ['series_id_str', 'series_id']) != drama.sourceId) {
@@ -98,6 +111,10 @@ final class HongguoDetailService {
           dramaId: drama.id,
           sourceEpisodeId: vid,
           index: index,
+          contentType: _contentTypeOf(
+            field(video, ['content_type']),
+            fallback: field(data, ['content_type']),
+          ),
         ),
       );
     }

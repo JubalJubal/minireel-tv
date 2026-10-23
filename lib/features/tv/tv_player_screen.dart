@@ -14,6 +14,7 @@ import '../../playback/app_playback_engine.dart';
 import '../../playback/buffered_playback_engine.dart';
 import '../../playback/device_controls.dart';
 import '../../playback/playback_session.dart';
+import '../shared/watch_reminder.dart';
 import '../shared/widgets.dart';
 import '../danmaku/danmaku_controller.dart';
 import '../danmaku/danmaku_overlay.dart';
@@ -147,6 +148,8 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     if (mounted && !_closing) setState(() {});
   }
 
+  final WatchReminder _watchReminder = WatchReminder();
+  String? _lastReminderMessage;
   int? _currentEpisodeIndexForSkip;
   bool _introSkipped = false;
   bool _outroSkipped = false;
@@ -165,6 +168,20 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
       _ensureHideTimer();
     }
     _checkAutoSkip();
+    unawaited(
+      _watchReminder.tick(
+        playing: _session.playing && _foreground,
+        preferences: _app.preferences,
+        save: (preferences) async {
+          _app.setPreferences(preferences);
+        },
+      ),
+    );
+    final reminderMessage = _watchReminder.message;
+    if (reminderMessage != null && reminderMessage != _lastReminderMessage) {
+      _lastReminderMessage = reminderMessage;
+      _showEdgeToast(reminderMessage);
+    }
     setState(() {});
   }
 

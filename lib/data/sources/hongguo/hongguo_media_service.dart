@@ -17,10 +17,11 @@ final class HongguoMediaService {
   Future<PlaybackOptions> resolve(
     String videoId, {
     CancelToken? cancelToken,
+    int contentType = 1,
   }) async {
     final result = await client.post('/novel/player/video_model/v1/', {
       'video_id': videoId,
-      'content_type': 1,
+      'content_type': contentType,
       'biz_param': {'need_all_video_definition': true, 'video_platform': 3},
     }, cancelToken: cancelToken);
     final value = objectMap(result['data'])['video_model'];

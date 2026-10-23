@@ -81,6 +81,12 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
     _cache ??= AppScope.read(context).store.cacheBytes();
   }
 
+  String _bedtimeLabel(int minute) {
+    final hour = minute ~/ 60 % 24;
+    final rest = minute % 60;
+    return '${hour.toString().padLeft(2, '0')}:${rest.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.watch(context);
@@ -139,6 +145,20 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
       1.5: '1.5x 倍速',
       2.0: '2.0x 倍速（默认）',
       3.0: '3.0x 极速',
+    };
+    final dailyLimitOptions = {
+      60: '1 小时',
+      120: '2 小时',
+      180: '3 小时',
+      240: '4 小时 (推荐)',
+      360: '6 小时',
+    };
+    final bedtimeOptions = {
+      21 * 60: '21:00',
+      22 * 60: '22:00',
+      23 * 60: '23:00 (推荐)',
+      24 * 60: '00:00',
+      60: '01:00',
     };
     final danmakuSpeedOptions = {
       0.7: '慢',
@@ -446,6 +466,57 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
                         (v) => app.setPreferences(
                           prefs.copyWith(speed: v),
                         ),
+                      ),
+                    ),
+                  ]),
+                  _group(context, '观看提醒', [
+                    _switchRow(
+                      context,
+                      Icons.hourglass_top_rounded,
+                      '每日时长提醒',
+                      '每天累计观看达到上限后提醒休息',
+                      prefs.watchReminderEnabled,
+                      (v) => app.setPreferences(
+                        prefs.copyWith(watchReminderEnabled: v),
+                      ),
+                    ),
+                    _navRow(
+                      context,
+                      Icons.schedule_rounded,
+                      '每日观看上限',
+                      dailyLimitOptions[prefs.watchDailyLimitMinutes] ??
+                          '${prefs.watchDailyLimitMinutes} 分钟',
+                      () => _pick(
+                        context,
+                        '每日观看上限',
+                        dailyLimitOptions,
+                        prefs.watchDailyLimitMinutes,
+                        (v) => app.setPreferences(
+                          prefs.copyWith(watchDailyLimitMinutes: v),
+                        ),
+                      ),
+                    ),
+                    _switchRow(
+                      context,
+                      Icons.bedtime_rounded,
+                      '睡觉时间提醒',
+                      '到达睡觉时间后播放页会定时提醒休息',
+                      prefs.bedtimeReminderEnabled,
+                      (v) => app.setPreferences(
+                        prefs.copyWith(bedtimeReminderEnabled: v),
+                      ),
+                    ),
+                    _navRow(
+                      context,
+                      Icons.nights_stay_rounded,
+                      '睡觉时间',
+                      bedtimeOptions[prefs.bedtimeMinute] ?? _bedtimeLabel(prefs.bedtimeMinute),
+                      () => _pick(
+                        context,
+                        '睡觉时间',
+                        bedtimeOptions,
+                        prefs.bedtimeMinute,
+                        (v) => app.setPreferences(prefs.copyWith(bedtimeMinute: v)),
                       ),
                     ),
                   ]),

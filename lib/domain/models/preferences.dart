@@ -43,6 +43,12 @@ final class Preferences {
     this.danmakuFontSize = 18,
     this.danmakuOpacity = 0.9,
     this.danmakuAreaRatio = 0.4,
+    this.watchReminderEnabled = false,
+    this.watchDailyLimitMinutes = 240,
+    this.bedtimeReminderEnabled = false,
+    this.bedtimeMinute = 23 * 60,
+    this.watchUsageDate = '',
+    this.watchUsageMinutes = 0,
   });
 
   final AppAppearance appearance;
@@ -99,6 +105,16 @@ final class Preferences {
   /// 弹幕占用屏幕高度比例：0.25 / 0.4 / 0.55 / 0.7
   final double danmakuAreaRatio;
 
+  /// 观看提醒（移植自参考实现）：每日累计观看时长提醒 + 睡觉时间提醒。
+  final bool watchReminderEnabled;
+  final int watchDailyLimitMinutes;
+  final bool bedtimeReminderEnabled;
+  final int bedtimeMinute;
+
+  /// 今日已观看分钟数与日期键（yyyyMMdd），跨会话累计。
+  final String watchUsageDate;
+  final int watchUsageMinutes;
+
   Preferences copyWith({
     AppAppearance? appearance,
     double? speed,
@@ -133,6 +149,12 @@ final class Preferences {
     double? danmakuFontSize,
     double? danmakuOpacity,
     double? danmakuAreaRatio,
+    bool? watchReminderEnabled,
+    int? watchDailyLimitMinutes,
+    bool? bedtimeReminderEnabled,
+    int? bedtimeMinute,
+    String? watchUsageDate,
+    int? watchUsageMinutes,
   }) => Preferences(
     appearance: appearance ?? this.appearance,
     speed: speed ?? this.speed,
@@ -167,6 +189,12 @@ final class Preferences {
     danmakuFontSize: danmakuFontSize ?? this.danmakuFontSize,
     danmakuOpacity: danmakuOpacity ?? this.danmakuOpacity,
     danmakuAreaRatio: danmakuAreaRatio ?? this.danmakuAreaRatio,
+    watchReminderEnabled: watchReminderEnabled ?? this.watchReminderEnabled,
+    watchDailyLimitMinutes: watchDailyLimitMinutes ?? this.watchDailyLimitMinutes,
+    bedtimeReminderEnabled: bedtimeReminderEnabled ?? this.bedtimeReminderEnabled,
+    bedtimeMinute: bedtimeMinute ?? this.bedtimeMinute,
+    watchUsageDate: watchUsageDate ?? this.watchUsageDate,
+    watchUsageMinutes: watchUsageMinutes ?? this.watchUsageMinutes,
   );
 
   Map<String, dynamic> toJson() => {
@@ -203,6 +231,12 @@ final class Preferences {
     'danmakuFontSize': danmakuFontSize,
     'danmakuOpacity': danmakuOpacity,
     'danmakuAreaRatio': danmakuAreaRatio,
+    'watchReminderEnabled': watchReminderEnabled,
+    'watchDailyLimitMinutes': watchDailyLimitMinutes,
+    'bedtimeReminderEnabled': bedtimeReminderEnabled,
+    'bedtimeMinute': bedtimeMinute,
+    'watchUsageDate': watchUsageDate,
+    'watchUsageMinutes': watchUsageMinutes,
   };
 
   factory Preferences.fromJson(Map<String, dynamic> json) => Preferences(
@@ -276,5 +310,19 @@ final class Preferences {
     danmakuAreaRatio: json['danmakuAreaRatio'] is num
         ? (json['danmakuAreaRatio'] as num).toDouble().clamp(0.15, 0.8)
         : 0.4,
+    watchReminderEnabled: json['watchReminderEnabled'] == true,
+    watchDailyLimitMinutes: json['watchDailyLimitMinutes'] is int
+        ? (json['watchDailyLimitMinutes'] as int).clamp(10, 1440)
+        : 240,
+    bedtimeReminderEnabled: json['bedtimeReminderEnabled'] == true,
+    bedtimeMinute: json['bedtimeMinute'] is int
+        ? (json['bedtimeMinute'] as int).clamp(0, 1439)
+        : 23 * 60,
+    watchUsageDate: json['watchUsageDate'] is String
+        ? json['watchUsageDate'] as String
+        : '',
+    watchUsageMinutes: json['watchUsageMinutes'] is int
+        ? (json['watchUsageMinutes'] as int).clamp(0, 1440)
+        : 0,
   );
 }

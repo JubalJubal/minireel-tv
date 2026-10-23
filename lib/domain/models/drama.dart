@@ -187,6 +187,7 @@ final class Episode {
     required this.dramaId,
     required this.sourceEpisodeId,
     required this.index,
+    this.contentType = 1,
   });
 
   final String id;
@@ -195,6 +196,11 @@ final class Episode {
 
   /// The episode number shown to viewers is one based.
   final int index;
+
+  /// 播放模型接口的内容类型：红果按剧集下发（普通短剧 1，AI/漫画等
+  /// 新内容类型为 1000+）。请求 video_model 时必须回传，写死 1 会让
+  /// 新内容类型拿不到播放地址。
+  final int contentType;
   String get title => '第 $index 集';
 
   Map<String, dynamic> toJson() => {
@@ -202,6 +208,7 @@ final class Episode {
     'dramaId': dramaId,
     'sourceEpisodeId': sourceEpisodeId,
     'index': index,
+    'contentType': contentType,
   };
 
   factory Episode.fromJson(Map<String, dynamic> json) => Episode(
@@ -209,6 +216,7 @@ final class Episode {
     dramaId: json['dramaId'] as String,
     sourceEpisodeId: json['sourceEpisodeId'] as String,
     index: json['index'] as int,
+    contentType: json['contentType'] is int ? json['contentType'] as int : 1,
   );
 }
 

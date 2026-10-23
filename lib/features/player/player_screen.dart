@@ -17,6 +17,7 @@ import '../detail/detail_sheet.dart';
 import '../danmaku/danmaku_controller.dart';
 import '../danmaku/danmaku_overlay.dart';
 import '../settings/settings_screen.dart';
+import '../shared/watch_reminder.dart';
 import '../shared/widgets.dart';
 import 'gesture_controller.dart';
 import 'player_gesture_surface.dart';
@@ -60,6 +61,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   Timer? _messageTimer;
   DanmakuController? _danmaku;
   String _danmakuEpisodeId = '';
+  final WatchReminder _watchReminder = WatchReminder();
+  String? _lastReminderMessage;
   bool _danmakuVisible = false;
 
   @override
@@ -122,6 +125,20 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _sessionChanged() {
     if (!mounted || _closing) return;
     _syncDanmaku();
+    unawaited(
+      _watchReminder.tick(
+        playing: _session.playing && _foreground && !_sheetOpen,
+        preferences: _app.preferences,
+        save: (preferences) async {
+          _app.setPreferences(preferences);
+        },
+      ),
+    );
+    final reminderMessage = _watchReminder.message;
+    if (reminderMessage != null && reminderMessage != _lastReminderMessage) {
+      _lastReminderMessage = reminderMessage;
+      _tell(reminderMessage);
+    }
     final awake =
         _foreground &&
         (_session.playing || _session.buffering) &&

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -67,10 +68,45 @@ final class HongguoAppClient {
       throw const AppException('App 设备信息暂时无法保存', kind: FailureKind.storage);
     }
     cancelToken?.throwIfCancellationRequested();
+    var text = await _postOnce(path, payload, cancelToken: cancelToken);
+    // 播放模型接口偶发空正文（HTTP 200 + 0 字节，服务端风控抖动）：
+    // 与参考实现 0.1.23 一致，做一次 250ms 短退避重试。
+    if (path == hongguoVideoModelPath && text.isEmpty) {
+      debugPrint('[HongguoApp] $path 空正文，250ms 后重试');
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      cancelToken?.throwIfCancellationRequested();
+      text = await _postOnce(path, payload, cancelToken: cancelToken);
+    }
+    debugPrint('[HongguoApp] $path -> ${text.length}B');
+    cancelToken?.throwIfCancellationRequested();
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is! Map<String, dynamic>) throw const FormatException();
+      final code = field(decoded, [
+        'code',
+        'Code',
+        'status_code',
+      ], field(objectMap(decoded['BaseResp']), ['StatusCode']));
+      if (code.isNotEmpty && code != '0') {
+        throw const AppException('App 接口暂不可用');
+      }
+      return decoded;
+    } on FormatException {
+      debugPrint('[HongguoApp] $path 响应非 JSON: ${text.substring(0, text.length.clamp(0, 120))}');
+      throw const AppException('App 接口返回格式异常', kind: FailureKind.parsing);
+    }
+  }
+
+  Future<String> _postOnce(
+    String path,
+    Map<String, dynamic> payload, {
+    CancelToken? cancelToken,
+    bool comment = false,
+  }) {
     final body = jsonEncode(payload);
     late DateTime now;
     final signed = path != hongguoVideoModelPath;
-    final text = await (transport as SignedJsonClient).postSignedJson(
+    return (transport as SignedJsonClient).postSignedJson(
       () {
         now = DateTime.now();
         final parameters = {
@@ -116,23 +152,5 @@ final class HongguoAppClient {
       },
       cancelToken: cancelToken,
     );
-    debugPrint('[HongguoApp] $path -> ${text.length}B');
-    cancelToken?.throwIfCancellationRequested();
-    try {
-      final decoded = jsonDecode(text);
-      if (decoded is! Map<String, dynamic>) throw const FormatException();
-      final code = field(decoded, [
-        'code',
-        'Code',
-        'status_code',
-      ], field(objectMap(decoded['BaseResp']), ['StatusCode']));
-      if (code.isNotEmpty && code != '0') {
-        throw const AppException('App 接口暂不可用');
-      }
-      return decoded;
-    } on FormatException {
-      debugPrint('[HongguoApp] $path 响应非 JSON: ${text.substring(0, text.length.clamp(0, 120))}');
-      throw const AppException('App 接口返回格式异常', kind: FailureKind.parsing);
-    }
   }
 }
