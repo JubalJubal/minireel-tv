@@ -69,9 +69,10 @@ final class HongguoAppClient {
     }
     cancelToken?.throwIfCancellationRequested();
     var text = await _postOnce(path, payload, cancelToken: cancelToken);
-    // 播放模型接口偶发空正文（HTTP 200 + 0 字节，服务端风控抖动）：
-    // 与参考实现 0.1.23 一致，做一次 250ms 短退避重试。
-    if (path == hongguoVideoModelPath && text.isEmpty) {
+    // App 接口偶发空正文（HTTP 200 + 0 字节，服务端风控抖动）：与参考
+    // 实现 0.1.23 一致做一次 250ms 短退避重试；读接口（目录/详情/播放
+    // 模型）全部幂等，重试无副作用。
+    if (text.isEmpty && !comment) {
       debugPrint('[HongguoApp] $path 空正文，250ms 后重试');
       await Future<void>.delayed(const Duration(milliseconds: 250));
       cancelToken?.throwIfCancellationRequested();
