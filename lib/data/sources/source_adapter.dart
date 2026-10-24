@@ -10,6 +10,18 @@ abstract interface class RemoteSearchSource {
   Future<SearchResult> searchRemote(String keyword, {CancelToken? cancelToken});
 }
 
+/// 推荐能力（当前只有红果提供）。
+abstract interface class RecommendationSource {
+  /// 取推荐；[more] 为 false 时重置该频道的推荐状态机重新开始。
+  Future<List<Drama>> recommendations(DramaChannel channel, {bool more});
+}
+
+/// 搜索词推荐能力（当前只有红果提供）。
+abstract interface class SearchSuggestionSource {
+  /// 返回与 [query] 前缀相关的联想词（去重，最多 10 条）。
+  Future<List<String>> searchSuggestions(String query);
+}
+
 abstract interface class RankingSource {
   Future<RankingPage> getRanking(
     RankingType type, {

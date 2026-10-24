@@ -14,10 +14,10 @@ import 'hongguo_comment_signer.dart';
 import 'hongguo_puresign.dart';
 
 /// 红果 App 接口的完整签名契约（对齐上游 0.1.24）：
-/// 除旧版单集播放模型接口外，所有请求必须携带六头签名（x-gorgon /
-/// x-khronos / x-ladon / x-argus / x-helios / x-medusa）+ X-SS-STUB +
-/// X-SS-Req-Ticket；缺头或签名落到 branch==1 都表现为 HTTP 200 空正文。
-const hongguoVideoModelPath = '/novel/player/video_model/v1/';
+/// 所有 App 请求必须携带六头签名（x-gorgon / x-khronos / x-ladon /
+/// x-argus / x-helios / x-medusa）+ X-SS-STUB + X-SS-Req-Ticket；缺头或
+/// 签名落到 branch==1 都表现为 HTTP 200 空正文。
+const hongguoVideoModelPath = '/novel/player/multi_video_model/v1/';
 
 final class HongguoAppClient {
   HongguoAppClient(this.config, this.transport, {this.store});
@@ -131,14 +131,13 @@ final class HongguoAppClient {
       'X-XS-From-Web': '0',
       'Sdk-Version': '2',
     };
-    final signed = path != hongguoVideoModelPath;
     if (comment) {
       headers['Comment-Source'] = '601';
       headers['Server-Channel'] = '1000';
       headers.addAll(
         signHongguoCommentRequest(uri, now, HongguoCommentNonce.random()),
       );
-    } else if (signed) {
+    } else {
       // 六头全签在发送前最后一刻进行：_rticket 可能被 branch 规避抖动，
       // 签名必须与最终发出的请求字节完全一致。
       final signedRequest = signHongguoAppRequest(uri, utf8.encode(body), now);
@@ -146,7 +145,7 @@ final class HongguoAppClient {
       headers.addAll(signedRequest.headers);
     }
     debugPrint(
-      '[HongguoApp] POST $path signed=${signed && !comment} '
+      '[HongguoApp] POST $path signed=${!comment} '
       'comment=$comment deviceId=${_deviceId.length}字 iid=${_installId.length}字',
     );
     return (transport as SignedJsonClient).postSignedJson(

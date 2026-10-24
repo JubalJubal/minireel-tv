@@ -59,18 +59,23 @@ void main() {
     },
   );
 
-  test('旧版播放模型接口不发送签名头（对齐上游豁免）', () async {
+  test('播放模型接口同样带六头签名（0.1.24 全签契约）', () async {
     final client = _CapturingClient();
     await HongguoAppClient(config, client).post(
       hongguoVideoModelPath,
-      {'video_id': '7692096762072288280'},
+      {
+        'biz_param': {'video_platform': 1024},
+        'mixed_video_id_map': {
+          '1004': ['7692096762072288280'],
+        },
+      },
     );
     final headers = client.requests.single.headers;
     for (final name in _sixHeaders) {
-      expect(headers.containsKey(name), isFalse, reason: name);
+      expect(headers[name], isNotNull, reason: name);
     }
-    expect(headers.containsKey('X-SS-STUB'), isFalse);
-    expect(headers.containsKey('X-SS-Req-Ticket'), isFalse);
+    expect(headers['X-SS-STUB'], isNotNull);
+    expect(headers['X-SS-Req-Ticket'], isNotNull);
     // 非签名头必须保留
     expect(headers['X-XS-From-Web'], '0');
     expect(headers['Sdk-Version'], '2');

@@ -9,6 +9,7 @@ import '../../domain/models/drama.dart';
 import '../../domain/models/catalog_order.dart';
 import '../detail/detail_sheet.dart';
 import '../shared/widgets.dart';
+import '../recommendations/recommendations_screen.dart';
 import 'tv_focus.dart';
 
 /// TV 版短剧库页面。
@@ -169,6 +170,41 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                             // 搜索按钮在 TVAppShell 的屏幕级悬浮层上
                             // （固定在左上角，不随内容区推挤移动）。
                             const Spacer(),
+                            if (app.repository.hasRecommendations)
+                              TVFocusable(
+                                radius: 20,
+                                focusRole: 'recommendations',
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => RecommendationsScreen(
+                                      onPlay: widget.onPlay,
+                                    ),
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.auto_awesome_outlined,
+                                        size: 18,
+                                        color: context.muted,
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        '推荐',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: context.muted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             TVFocusable(
                               radius: 20,
                               focusRole: 'filter',

@@ -35,17 +35,26 @@ void main() {
       ..httpClientAdapter = transport,
   );
 
-  test('429 retries and returns the later successful body', () async {
+  test('429 fails immediately and surfaces the retry-after hint', () async {
     final transport = _Transport(
-      (attempt) => ResponseBody.fromString(
-        attempt == 1 ? 'busy' : 'ready',
-        attempt == 1 ? 429 : 200,
-      ),
+      (_) => ResponseBody.fromString('busy', 429, headers: {
+        'retry-after': ['90'],
+      }),
     );
     final client = clientFor(transport);
     addTearDown(client.close);
-    expect(await client.getText(config.baseUrl), 'ready');
-    expect(transport.requests, 2);
+    await expectLater(
+      client.getText(config.baseUrl),
+      throwsA(
+        isA<AppException>().having(
+          (error) => error.message,
+          'message',
+          contains('90 秒后重试'),
+        ),
+      ),
+    );
+    // 与上游限流契约一致：429 不做短间隔重试。
+    expect(transport.requests, 1);
   });
 
   test('ordinary 4xx errors are not retried', () async {

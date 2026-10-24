@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
+import 'package:pointycastle/export.dart' show SHA256Digest;
 
 import '../../../core/errors/app_exception.dart';
 import '../../../core/network/app_http_client.dart';
@@ -163,13 +166,15 @@ final class HongguoCatalogService {
     final more = data['has_more'];
     final next = int.tryParse(field(data, ['next_offset']));
     final lastId = items.isEmpty ? '' : items.keys.last;
+    // 对齐上游 PageSignature：本页 ID 升序 SHA-256，用于识别同一页重复。
+    final signature = items.isEmpty ? '' : _pageSignature(items.keys);
     if (more is! bool ||
         (more &&
             (next == null ||
                 next <= cursor.offset ||
                 next > 1000000 ||
                 items.isEmpty ||
-                lastId == cursor.lastId))) {
+                (lastId == cursor.lastId && signature == cursor.pageSignature)))) {
       throw const AppException('App 分页未前进，已保留上次位置');
     }
     return CatalogPage(
@@ -180,6 +185,7 @@ final class HongguoCatalogService {
             : cursor.offset + rows.length,
         sessionId: field(data, ['session_id']),
         lastId: lastId,
+        pageSignature: signature,
         initialized: true,
         exhausted: !more,
         updatedAt: DateTime.now(),
@@ -188,5 +194,14 @@ final class HongguoCatalogService {
       ),
       hasMore: more,
     );
+  }
+
+  /// 本页全部剧集 ID 升序排列、换行连接后的 SHA-256 hex。
+  String _pageSignature(Iterable<String> ids) {
+    final sorted = ids.toList()..sort();
+    final digest = SHA256Digest().process(
+      utf8.encode(sorted.join('\n')),
+    );
+    return digest.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 }

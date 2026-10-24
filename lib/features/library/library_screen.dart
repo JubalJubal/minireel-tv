@@ -10,6 +10,7 @@ import '../../domain/models/catalog_order.dart';
 import '../detail/detail_sheet.dart';
 import '../search/search_screen.dart';
 import '../rankings/rankings_screen.dart';
+import '../recommendations/recommendations_screen.dart';
 import '../shared/widgets.dart';
 import '../shared/drama_metadata.dart';
 
@@ -157,6 +158,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           ),
                         ),
                       ),
+                      if (repo.hasRecommendations)
+                        IconButton(
+                          tooltip: '推荐',
+                          icon: const Icon(Icons.auto_awesome_outlined),
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  RecommendationsScreen(onPlay: widget.onPlay),
+                            ),
+                          ),
+                        ),
                       if (repo.hasRankings)
                         IconButton(
                           tooltip: '热播榜',

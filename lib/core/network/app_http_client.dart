@@ -114,7 +114,20 @@ final class AppHttpClient implements TextClient, SignedJsonClient {
         }
         final status = response.statusCode ?? 0;
         if (status >= 200 && status < 300) return text;
-        final retryable = status == 408 || status == 429 || status >= 500;
+        // 与上游限流契约一致：429 立即失败并透出服务端要求的等待秒数，
+        // 短间隔重试只会加重限流。
+        if (status == 429) {
+          final retryAfter = int.tryParse(
+            response.headers.value('retry-after') ?? '',
+          );
+          throw AppException(
+            retryAfter == null
+                ? '请求过于频繁，请稍后重试'
+                : '请求过于频繁，请在 $retryAfter 秒后重试',
+            kind: FailureKind.network,
+          );
+        }
+        final retryable = status == 408 || status >= 500;
         if (!retryable || attempt == _config.retries - 1) {
           throw AppException(
             status == 404 ? '暂时没有找到这部短剧' : '剧库暂时无法连接，请稍后重试',

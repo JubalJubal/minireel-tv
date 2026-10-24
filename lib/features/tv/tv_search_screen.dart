@@ -8,6 +8,7 @@ import '../../core/errors/app_exception.dart';
 import '../../domain/models/discovery.dart';
 import '../../domain/models/drama.dart';
 import '../../domain/models/remote_key_map.dart';
+import '../shared/search_suggestions.dart';
 import '../shared/widgets.dart';
 import 'tv_focus.dart';
 
@@ -256,6 +257,16 @@ class _TVSearchScreenState extends State<TVSearchScreen> {
                 ],
               ),
             ),
+            if (app.repository.hasSearchSuggestions)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 6),
+                child: SearchSuggestionPanel(
+                  controller: _query,
+                  fetch: (query) => app.repository.searchSuggestions(query),
+                  onSelected: (_) => _search(),
+                  rowHeight: 48,
+                ),
+              ),
             Expanded(
               child: FocusTraversalGroup(
                 key: _resultsKey,

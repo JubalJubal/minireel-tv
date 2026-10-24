@@ -34,6 +34,43 @@ final class DramaRepository extends ChangeNotifier {
   bool get canSearchRemote =>
       registry.all.any((source) => source is RemoteSearchSource);
   bool get hasRankings => registry.all.any((source) => source is RankingSource);
+
+  /// 是否有站源提供搜索词推荐。
+  bool get hasSearchSuggestions =>
+      registry.all.any((source) => source is SearchSuggestionSource);
+
+  /// 是否有站源提供推荐。
+  bool get hasRecommendations =>
+      registry.all.any((source) => source is RecommendationSource);
+
+  /// 推荐列表（[more] 续拉；无能力时返回空）。
+  Future<List<Drama>> recommendations(DramaChannel channel, {bool more = false}) async {
+    for (final source in registry.all) {
+      if (source is! RecommendationSource) continue;
+      final capable = source as RecommendationSource;
+      try {
+        return await capable.recommendations(channel, more: more);
+      } on Exception {
+        return const [];
+      }
+    }
+    return const [];
+  }
+
+  /// 搜索词推荐（当前只有红果提供；无能力时返回空）。
+  Future<List<String>> searchSuggestions(String query) async {
+    for (final source in registry.all) {
+      if (source is! SearchSuggestionSource) continue;
+      final capable = source as SearchSuggestionSource;
+      try {
+        return await capable.searchSuggestions(query);
+      } on Exception {
+        return const [];
+      }
+    }
+    return const [];
+  }
+
   List<Drama> searchLocal(String keyword) =>
       catalog.where((drama) => drama.matches(keyword)).toList();
 

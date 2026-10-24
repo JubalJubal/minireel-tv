@@ -18,6 +18,8 @@ import 'hongguo_media_service.dart';
 import 'hongguo_route_service.dart';
 import 'hongguo_web_fallback.dart';
 import 'hongguo_search_service.dart';
+import 'hongguo_recommendation_service.dart';
+import 'hongguo_suggestion_service.dart';
 import 'hongguo_ranking_service.dart';
 
 final class HongguoAdapter
@@ -27,14 +29,18 @@ final class HongguoAdapter
         RoutedPlaybackSource,
         SourceCacheControl,
         RemoteSearchSource,
-        RankingSource {
+        RankingSource,
+        SearchSuggestionSource,
+        RecommendationSource {
   HongguoAdapter(this.config, this.client, {SourceStateStore? store}) {
     appClient = HongguoAppClient(config, client, store: store);
     web = HongguoWebFallback(config, client);
     catalogService = HongguoCatalogService(appClient, web);
     detailService = HongguoDetailService(appClient);
     mediaService = HongguoMediaService(appClient, config);
-    searchService = HongguoSearchService(config, client);
+    suggestionService = HongguoSuggestionService(config, client);
+    recommendationService = HongguoRecommendationService(appClient);
+    searchService = HongguoSearchService(config, client, suggestionService);
     rankingService = HongguoRankingService(config, client);
     routes = HongguoRouteService(
       config,
@@ -52,6 +58,8 @@ final class HongguoAdapter
   late final HongguoDetailService detailService;
   late final HongguoMediaService mediaService;
   late final HongguoSearchService searchService;
+  late final HongguoSuggestionService suggestionService;
+  late final HongguoRecommendationService recommendationService;
   late final HongguoRankingService rankingService;
 
   /// 线路设置与测速服务（持久化 key：`hongguo:routes`）。
@@ -242,10 +250,11 @@ final class HongguoAdapter
   }) {
     switch (routeId) {
       case SourceRouteIds.app:
+        // 上游 0.1.24：multi_video_model 不再接受 content_type，
+        // mixed_video_id_map 键固定 1004。
         return mediaService.resolve(
           episode.sourceEpisodeId,
           cancelToken: cancelToken,
-          contentType: episode.contentType,
         );
       case SourceRouteIds.web:
         return web
@@ -256,6 +265,27 @@ final class HongguoAdapter
       default:
         throw AppException('未知播放线路：$routeId');
     }
+  }
+
+  @override
+  Future<List<Drama>> recommendations(
+    DramaChannel channel, {
+    bool more = false,
+  }) {
+    final (key, scene) = switch (channel) {
+      DramaChannel.real => ('short_play', 'default'),
+      DramaChannel.comicDrama => ('comic_series', 'comic_series'),
+      DramaChannel.ai => ('ai_series', 'ai_series'),
+      _ => throw const AppException('该分类暂不支持推荐'),
+    };
+    if (!more) recommendationService.reset(key);
+    return recommendationService.fetch(key, scene: scene);
+  }
+
+  @override
+  Future<List<String>> searchSuggestions(String query) async {
+    final records = await suggestionService.fetch(query);
+    return [for (final record in records) record.name];
   }
 
   void _validateId(String id) {

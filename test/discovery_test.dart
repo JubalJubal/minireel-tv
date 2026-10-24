@@ -67,12 +67,17 @@ void main() {
         service.search(query),
         service.search(query),
       ]);
-      expect(client.calls, hasLength(1));
-      expect(client.calls.single.pathSegments, ['search', query]);
+      // 双路合并（对齐上游）：网页搜索 + 联想接口的名称检索。
+      expect(client.calls, hasLength(2));
+      expect(client.calls.first.pathSegments, ['search', query]);
+      expect(
+        client.calls.last.pathSegments,
+        ['incent_resource', 'suggestion'],
+      );
       expect(results.first.items, hasLength(1));
       expect(results.first.total, 7);
       await service.search(query);
-      expect(client.calls, hasLength(1));
+      expect(client.calls, hasLength(2));
       expect(() => service.search('a' * 81), throwsA(isA<AppException>()));
       expect(
         () => service.parse(

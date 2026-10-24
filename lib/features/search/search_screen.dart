@@ -8,6 +8,7 @@ import '../../domain/models/discovery.dart';
 import '../../domain/models/drama.dart';
 import '../shared/drama_list_tile.dart';
 import '../shared/widgets.dart';
+import '../shared/search_suggestions.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key, required this.onPlay});
@@ -159,6 +160,15 @@ class _SearchScreenState extends State<SearchScreen> {
                 ],
               ),
             ),
+            if (app.repository.hasSearchSuggestions)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                child: SearchSuggestionPanel(
+                  controller: _query,
+                  fetch: (query) => app.repository.searchSuggestions(query),
+                  onSelected: (_) => _search(),
+                ),
+              ),
             Expanded(
               child: ListenableBuilder(
                 listenable: app.repository,
