@@ -131,6 +131,10 @@ final class HongguoParser {
       coverUrl: field(data, [
         'series_cover',
         'cover',
+        // 推荐流（landpage sort 空）的行结构不同：封面在 vertical /
+        // horiz_cover 上，catalog 行的 cover 为空时回退取用。
+        'vertical',
+        'horiz_cover',
       ], fallback?.coverUrl ?? ''),
       intro: field(data, ['series_intro', 'video_desc'], fallback?.intro ?? ''),
       category: field(data, [

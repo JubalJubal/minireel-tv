@@ -438,7 +438,11 @@ final class DanmakuController extends ChangeNotifier {
     } on Object catch (error) {
       if (_closed || ticket != _generation) return;
       if (error is DioException && CancelToken.isCancel(error)) return;
-      _failures[start] = DateTime.now().add(_failureCooldown);
+      // 首窗（本集一条弹幕都还没有）失败用短冷却：弹幕晚到 15 秒观感
+      // 很差，而服务端空响应抖动通常几百毫秒内恢复；后续窗口保持 15s。
+      final cooldown =
+          _pages.isEmpty ? const Duration(seconds: 3) : _failureCooldown;
+      _failures[start] = DateTime.now().add(cooldown);
       while (_failures.length > 8) {
         _failures.remove(_failures.keys.first);
       }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -64,10 +66,27 @@ class BrandMark extends StatelessWidget {
   );
 }
 
-class CoverImage extends StatelessWidget {
+class CoverImage extends StatefulWidget {
   const CoverImage({super.key, required this.drama, this.fit = BoxFit.cover});
   final Drama drama;
   final BoxFit fit;
+  @override
+  State<CoverImage> createState() => _CoverImageState();
+}
+
+class _CoverImageState extends State<CoverImage> {
+  // 部分封面 CDN（如推荐流的 p3-reading-sign.fqnovelpic.com）会拒绝
+  // 非浏览器 UA；首次失败后去掉自定义 UA 重试一次。
+  bool _retryWithoutHeaders = false;
+
+  @override
+  void didUpdateWidget(CoverImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.drama.coverUrl != widget.drama.coverUrl) {
+      _retryWithoutHeaders = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     Widget placeholder() => ColoredBox(
@@ -80,22 +99,34 @@ class CoverImage extends StatelessWidget {
         ),
       ),
     );
-    if (drama.coverUrl.isEmpty || drama.coverUrl.contains('.heic')) {
-      return placeholder();
-    }
+    final url = widget.drama.coverUrl;
+    if (url.isEmpty || url.contains('.heic')) return placeholder();
     // TV/低端设备性能优化：按显示尺寸解码，避免把原图整张解码进内存。
     final useCacheWidth = defaultTargetPlatform != TargetPlatform.macOS;
     return Image.network(
-      drama.coverUrl,
-      fit: fit,
+      url,
+      fit: widget.fit,
       cacheWidth: useCacheWidth ? 350 : null,
-      headers: const {
-        'User-Agent':
-            'Mozilla/5.0 (Linux; Android 9; TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36',
-      },
+      headers: _retryWithoutHeaders
+          ? null
+          : const {
+              'User-Agent':
+                  'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) '
+                  'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 '
+                  'Mobile/15E148 Safari/604.1',
+            },
       excludeFromSemantics: true,
       gaplessPlayback: true,
-      errorBuilder: (_, _, _) => placeholder(),
+      errorBuilder: (_, _, _) {
+        if (!_retryWithoutHeaders) {
+          _retryWithoutHeaders = true;
+          scheduleMicrotask(() {
+            if (mounted) setState(() {});
+          });
+          return placeholder();
+        }
+        return placeholder();
+      },
       frameBuilder: (context, child, frame, synchronous) =>
           synchronous || frame != null ? child : placeholder(),
     );
